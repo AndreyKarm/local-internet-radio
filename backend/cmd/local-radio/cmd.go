@@ -44,6 +44,7 @@ func main() {
 	mux.HandleFunc("/stream", bc.StreamHandler)
 	mux.HandleFunc("/now-playing", api.NowPlayingHandler(engine))
 	mux.HandleFunc("/now-playing/cover", api.CoverHandler(engine))
+	mux.HandleFunc("/queue", api.QueueHandler(engine))
 	mux.HandleFunc("/upload", api.UploadHandler(store))
 
 	mux.HandleFunc("/ws/now-playing", api.NowPlayingWSHandler(engine))

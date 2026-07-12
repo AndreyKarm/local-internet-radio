@@ -26,6 +26,10 @@ type NowPlayingProvider interface {
 	GetNowPlaying() audio.NowPlaying
 }
 
+type QueueProvider interface {
+	GetQueue() (queue []string, currentIndex int)
+}
+
 type CoverProvider interface {
 	GetCover() ([]byte, string)
 }
@@ -34,12 +38,27 @@ func NowPlayingHandler(np NowPlayingProvider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		current := np.GetNowPlaying()
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
-			"track":  current.Key,
-			"title":  current.Title,
-			"artist": current.Artist,
-			"album":  current.Album,
-			"cover":  "/now-playing/cover",
+		json.NewEncoder(w).Encode(map[string]any{
+			"track":       current.Key,
+			"title":       current.Title,
+			"artist":      current.Artist,
+			"album":       current.Album,
+			"cover":       "/now-playing/cover",
+			"duration":    current.Duration,
+			"started_at":  current.StartedAt,
+			"queue":       current.Queue,
+			"queue_index": current.QueueIndex,
+		})
+	}
+}
+
+func QueueHandler(qp QueueProvider) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		queue, index := qp.GetQueue()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"queue":         queue,
+			"current_index": index,
 		})
 	}
 }
@@ -82,14 +101,16 @@ func NowPlayingWSHandler(engine *audio.Engine) http.HandlerFunc {
 					return
 				}
 				conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-				err := conn.WriteJSON(map[string]interface{}{
-					"track":      current.Key,
-					"title":      current.Title,
-					"artist":     current.Artist,
-					"album":      current.Album,
-					"cover":      "/now-playing/cover",
-					"duration":   current.Duration,
-					"started_at": current.StartedAt,
+				err := conn.WriteJSON(map[string]any{
+					"track":       current.Key,
+					"title":       current.Title,
+					"artist":      current.Artist,
+					"album":       current.Album,
+					"cover":       "/now-playing/cover",
+					"duration":    current.Duration,
+					"started_at":  current.StartedAt,
+					"queue":       current.Queue,
+					"queue_index": current.QueueIndex,
 				})
 				if err != nil {
 					log.Printf("client disconnected from now-playing ws: %v", err)

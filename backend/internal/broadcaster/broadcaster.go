@@ -1,6 +1,7 @@
 package broadcaster
 
 import (
+	"bytes"
 	"net/http"
 	"strconv"
 	"strings"
@@ -120,6 +121,7 @@ type icyWriter struct {
 	getTitle    func() string
 	bytesToMeta int
 	lastTitle   string
+	buf         bytes.Buffer
 }
 
 func newICYWriter(w http.ResponseWriter, getTitle func() string) *icyWriter {
@@ -127,46 +129,41 @@ func newICYWriter(w http.ResponseWriter, getTitle func() string) *icyWriter {
 }
 
 func (iw *icyWriter) Write(b []byte) error {
+	iw.buf.Reset()
 	for len(b) > 0 {
 		if iw.bytesToMeta > len(b) {
-			if _, err := iw.w.Write(b); err != nil {
-				return err
-			}
+			iw.buf.Write(b)
 			iw.bytesToMeta -= len(b)
-			return nil
+			b = nil
+			break
 		}
 
 		if iw.bytesToMeta > 0 {
-			if _, err := iw.w.Write(b[:iw.bytesToMeta]); err != nil {
-				return err
-			}
+			iw.buf.Write(b[:iw.bytesToMeta])
 			b = b[iw.bytesToMeta:]
 		}
 
-		if err := iw.writeMetaBlock(); err != nil {
-			return err
-		}
+		iw.writeMetaBlock(&iw.buf)
 		iw.bytesToMeta = icyMetaInt
 	}
-	return nil
+
+	_, err := iw.w.Write(iw.buf.Bytes())
+	return err
 }
 
-func (iw *icyWriter) writeMetaBlock() error {
+func (iw *icyWriter) writeMetaBlock(buf *bytes.Buffer) {
 	title := iw.getTitle()
 	if title == iw.lastTitle {
-		_, err := iw.w.Write([]byte{0x00})
-		return err
+		buf.WriteByte(0x00)
+		return
 	}
 	iw.lastTitle = title
 
 	tag := "StreamTitle='" + strings.ReplaceAll(title, "'", "") + "';"
 	blockLen := (len(tag) + 15) / 16
+	buf.WriteByte(byte(blockLen))
 	padded := make([]byte, blockLen*16)
 	copy(padded, tag)
 
-	if _, err := iw.w.Write([]byte{byte(blockLen)}); err != nil {
-		return err
-	}
-	_, err := iw.w.Write(padded)
-	return err
+	buf.Write(padded)
 }

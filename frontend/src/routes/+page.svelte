@@ -7,6 +7,9 @@
 		track: string;
 		duration: number;
 		started_at: number;
+
+		queue: Array<string>;
+		queue_index: number;
 	};
 </script>
 
@@ -19,7 +22,7 @@
 	import { RADIO_URL } from '$lib';
 
 	// State
-	let trackData: TrackData | undefined = $state();
+	let data: TrackData | undefined = $state();
 	let timestamp = $state(Date.now());
 	let elapsed = $state(0);
 	let remaining = $state(0);
@@ -44,11 +47,12 @@
 
 		ws.onmessage = (event) => {
 			try {
-				const data = JSON.parse(event.data);
-				if (trackData?.title !== data.title) {
+				const response = JSON.parse(event.data);
+				console.log('WebSocket message:', response);
+				if (data?.title !== response.title) {
 					timestamp = Date.now();
 				}
-				trackData = data;
+				data = response;
 			} catch (e) {
 				console.error('Failed to parse WebSocket message', e);
 			}
@@ -116,16 +120,16 @@
 		}
 
 		const timer = setInterval(() => {
-			if (trackData && trackData.duration && trackData.started_at) {
+			if (data && data.duration && data.started_at) {
 				const now = Date.now();
-				let currentElapsed = Math.floor((now - trackData.started_at) / 1000);
+				let currentElapsed = Math.floor((now - data.started_at) / 1000);
 
-				if (currentElapsed > trackData.duration) {
-					currentElapsed = trackData.duration;
+				if (currentElapsed > data.duration) {
+					currentElapsed = data.duration;
 				}
 
 				elapsed = currentElapsed;
-				remaining = trackData.duration - elapsed;
+				remaining = data.duration - elapsed;
 			} else {
 				elapsed = 0;
 				remaining = 0;
@@ -148,17 +152,17 @@
 		<img
 			draggable="false"
 			class="cover"
-			src={trackData ? `${RADIO_URL}${trackData?.cover}?t=${timestamp}` : '/boykisser.png'}
+			src={data ? `${RADIO_URL}${data?.cover}?t=${timestamp}` : '/boykisser.png'}
 			alt="cover"
 		/>
 
-		{#if trackData}
-			<h2>{trackData.title} - {trackData.artist}</h2>
-			{#if trackData.duration}
+		{#if data}
+			<h2>{data.title} - {data.artist}</h2>
+			{#if data.duration}
 				<div class="time-display">
 					<span class="time">{formatTime(elapsed)}</span>
 					<div class="progress-bar">
-						<div class="progress-fill" style="width: {(elapsed / trackData.duration) * 100}%"></div>
+						<div class="progress-fill" style="width: {(elapsed / data.duration) * 100}%"></div>
 					</div>
 					<span class="time">-{formatTime(remaining)}</span>
 				</div>
@@ -232,6 +236,14 @@
 			</button>
 		</form>
 	</div>
+
+	{#if data}
+		<div>
+			{#each data.queue as item, i (i)}
+				<p>{item}</p>
+			{/each}
+		</div>
+	{/if}
 </main>
 
 <style>
