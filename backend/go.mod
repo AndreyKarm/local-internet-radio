@@ -4,6 +4,7 @@ go 1.26.5
 
 require (
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
+	github.com/gorilla/websocket v1.5.3
 	github.com/joho/godotenv v1.5.1
 	github.com/minio/minio-go/v7 v7.2.1
 	github.com/rs/cors v1.11.1

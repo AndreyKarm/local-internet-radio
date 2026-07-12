@@ -10,29 +10,47 @@ services:
       RUSTFS_SECRET_KEY: radiopass123
     volumes:
       - rustfs_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"] 
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  postgres:
-    image: postgres:16-alpine
-    container_name: radio-postgres
-    environment:
-      POSTGRES_USER: radio
-      POSTGRES_PASSWORD: radiopass123
-      POSTGRES_DB: radio
-    ports:
-      - "5455:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  # radio:
-  #   build: .
-  #   container_name: radio-server
-  #   depends_on:
-  #     - rustfs
-  #     - postgres
-  #   env_file:
-  #     - .env
+  # postgres:
+  #   image: postgres:16-alpine
+  #   container_name: radio-postgres
+  #   environment:
+  #     POSTGRES_USER: radio
+  #     POSTGRES_PASSWORD: radiopass123
+  #     POSTGRES_DB: radio
   #   ports:
-  #     - "8080:8080"
+  #     - "5455:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+
+  radio:
+    build:
+      context: ./backend
+    container_name: radio-server
+    depends_on:
+      rustfs:
+        condition: service_healthy
+      # - postgres
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8080:8080"
+
+  web:
+    build:
+      context: ./frontend
+    container_name: radio-web
+    depends_on:
+      - radio
+    environment:
+      - RADIO_URL=http://localhost:8080
+    ports:
+      - "3000:3000"
 
 volumes:
   rustfs_data:

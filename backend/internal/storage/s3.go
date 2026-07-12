@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"io"
 	"log"
 	"os"
 	"strconv"
@@ -64,4 +65,11 @@ func (s *S3Store) ListTracks(ctx context.Context) ([]string, error) {
 
 func (s *S3Store) GetObject(ctx context.Context, key string) (*minio.Object, error) {
 	return s.client.GetObject(ctx, s.bucketName, key, minio.GetObjectOptions{})
+}
+
+func (s *S3Store) UploadTrack(ctx context.Context, key string, body io.Reader, size int64) error {
+	_, err := s.client.PutObject(ctx, s.bucketName, key, body, size, minio.PutObjectOptions{
+		ContentType: "audio/mpeg",
+	})
+	return err
 }

@@ -8,6 +8,8 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,10 +19,12 @@ import (
 )
 
 type NowPlaying struct {
-	Key    string
-	Title  string
-	Artist string
-	Album  string
+	Key       string
+	Title     string
+	Artist    string
+	Album     string
+	Duration  int
+	StartedAt int64
 }
 
 type Engine struct {
@@ -31,6 +35,9 @@ type Engine struct {
 	cover     []byte
 	coverMIME string
 	trackMu   sync.RWMutex
+
+	listeners []chan NowPlaying
+	listMu    sync.Mutex
 }
 
 func NewEngine(s *storage.S3Store, b *broadcaster.Broadcaster) *Engine {
@@ -39,7 +46,7 @@ func NewEngine(s *storage.S3Store, b *broadcaster.Broadcaster) *Engine {
 
 func (e *Engine) startDecoder(ctx context.Context, data []byte) (io.ReadCloser, func(), error) {
 	cmd := exec.CommandContext(ctx, "ffmpeg",
-		"-hide_banner", "-loglevel", "warning",
+		"-hide_banner", "-loglevel", "error",
 		"-f", "mp3", "-i", "pipe:0",
 		"-vn", "-f", "s16le", "-ar", "44100", "-ac", "2", "pipe:1",
 	)
@@ -118,7 +125,8 @@ func (e *Engine) Run(ctx context.Context) {
 				}
 
 				log.Printf("now playing: %s\n", track.StreamTitle())
-				e.setNowPlaying(key, track)
+				duration := getDurationFromBytes(ctx, data)
+				e.setNowPlaying(key, track, duration)
 
 				decoderStream, cleanup, err := e.startDecoder(ctx, data)
 				if err != nil {
@@ -166,12 +174,53 @@ func (e *Engine) Run(ctx context.Context) {
 	_ = cmd.Wait()
 }
 
-func (e *Engine) setNowPlaying(key string, t *metadata.Track) {
+func (e *Engine) Subscribe() chan NowPlaying {
+	ch := make(chan NowPlaying, 1)
+
+	e.listMu.Lock()
+	e.listeners = append(e.listeners, ch)
+	e.listMu.Unlock()
+
+	// Send the currently playing track immediately upon connecting
+	ch <- e.GetNowPlaying()
+
+	return ch
+}
+
+func (e *Engine) Unsubscribe(ch chan NowPlaying) {
+	e.listMu.Lock()
+	defer e.listMu.Unlock()
+	for i, c := range e.listeners {
+		if c == ch {
+			e.listeners = append(e.listeners[:i], e.listeners[i+1:]...)
+			close(ch)
+			break
+		}
+	}
+}
+
+func (e *Engine) setNowPlaying(key string, t *metadata.Track, duration int) {
 	e.trackMu.Lock()
-	e.current = NowPlaying{Key: key, Title: t.Title, Artist: t.Artist, Album: t.Album}
+	e.current = NowPlaying{
+		Key:       key,
+		Title:     t.Title,
+		Artist:    t.Artist,
+		Album:     t.Album,
+		Duration:  duration,
+		StartedAt: time.Now().UnixMilli(),
+	}
 	e.cover = t.CoverData
 	e.coverMIME = t.CoverMIME
 	e.trackMu.Unlock()
+
+	e.listMu.Lock()
+	defer e.listMu.Unlock()
+	for _, ch := range e.listeners {
+		select {
+		case ch <- e.current:
+		default:
+		}
+	}
 }
 
 func (e *Engine) GetNowPlaying() NowPlaying {
@@ -194,4 +243,47 @@ func (e *Engine) CurrentStreamTitle() string {
 		return fmt.Sprintf("%s - %s", e.current.Artist, e.current.Title)
 	}
 	return e.current.Title
+}
+
+func getDurationFromBytes(ctx context.Context, data []byte) int {
+	tmpFile, err := os.CreateTemp("", "radio-track-*.mp3")
+	if err != nil {
+		log.Printf("failed to create temp file: %v", err)
+		return 0
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write(data); err != nil {
+		log.Printf("failed to write temp file: %v", err)
+		return 0
+	}
+	tmpFile.Close()
+
+	cmd := exec.CommandContext(ctx, "ffprobe",
+		"-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		tmpFile.Name(),
+	)
+
+	out, err := cmd.Output()
+	if err != nil {
+		log.Printf("ffprobe failed to get duration: %v", err)
+		return 0
+	}
+
+	outputStr := strings.TrimSpace(string(out))
+
+	if outputStr == "N/A" || outputStr == "" {
+		log.Println("ffprobe returned N/A for duration")
+		return 0
+	}
+
+	durationFloat, err := strconv.ParseFloat(outputStr, 64)
+	if err != nil {
+		log.Printf("failed to parse ffprobe output %q: %v", outputStr, err)
+		return 0
+	}
+
+	return int(durationFloat)
 }

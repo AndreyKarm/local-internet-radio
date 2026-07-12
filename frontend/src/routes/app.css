@@ -1,0 +1,125 @@
+* {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+}
+
+:root {
+	--text: white;
+	--background: #0a0a0a;
+	--primary: #d88cde;
+	--secondary: #1c1c1c;
+	--accent: #cc50d6;
+	--grey: #666;
+	--danger: #ff4757;
+}
+
+html {
+	font-family: 'Montserrat', sans-serif;
+	font-optical-sizing: auto;
+	font-weight: 600;
+	font-style: normal;
+
+	background: var(--background);
+	color: var(--text);
+}
+
+::selection {
+	color: var(--text);
+	background: var(--primary);
+}
+
+button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+
+	background: var(--primary);
+	color: var(--text);
+	border: none;
+	border-radius: 0.5rem;
+	padding: 0.8rem;
+	font-family: inherit;
+	font-weight: 700;
+	font-size: 1rem;
+	cursor: pointer;
+	transition:
+		background 0.2s,
+		transform 0.1s;
+	letter-spacing: 0.02em;
+}
+
+button:hover {
+	background: var(--accent);
+}
+
+/* Volume Slider */
+.volume-control {
+	display: flex;
+	align-items: center;
+	width: 100%;
+	gap: 1rem;
+}
+
+.volume-slider {
+	-webkit-appearance: none;
+	appearance: none;
+	width: 100%;
+	height: 0.5rem;
+	background: linear-gradient(
+		to right,
+		var(--primary) var(--progress),
+		var(--background) var(--progress)
+	);
+	border-radius: 1rem;
+	outline: none;
+	cursor: pointer;
+}
+
+.volume-slider::-webkit-slider-thumb {
+	-webkit-appearance: none;
+	appearance: none;
+	width: 1.2rem;
+	height: 1.2rem;
+	border-radius: 50%;
+	background: var(--text);
+	cursor: pointer;
+	transition:
+		transform 0.1s,
+		background 0.2s;
+}
+
+.volume-slider::-webkit-slider-thumb:hover {
+	transform: scale(1.2);
+	background: var(--accent);
+}
+
+.volume-slider::-moz-range-thumb {
+	width: 1.2rem;
+	height: 1.2rem;
+	border-radius: 50%;
+	background: var(--text);
+	border: none;
+	cursor: pointer;
+	transition: all 0.2s;
+}
+
+.volume-slider::-moz-range-thumb:hover {
+	transform: scale(1.2);
+	background: var(--accent);
+}
+
+/* Progress Bar */
+.progress-bar {
+	flex-grow: 1;
+	height: 0.5rem;
+	background: var(--background);
+	border-radius: 1rem;
+	overflow: hidden;
+}
+
+.progress-fill {
+	height: 100%;
+	background: var(--primary);
+	transition: width 1s linear;
+}

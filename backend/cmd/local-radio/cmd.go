@@ -40,15 +40,18 @@ func main() {
 	})
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/stream", bc.StreamHandler)
 	mux.HandleFunc("/health", api.HealthHandler)
+	mux.HandleFunc("/stream", bc.StreamHandler)
 	mux.HandleFunc("/now-playing", api.NowPlayingHandler(engine))
 	mux.HandleFunc("/now-playing/cover", api.CoverHandler(engine))
+	mux.HandleFunc("/upload", api.UploadHandler(store))
+
+	mux.HandleFunc("/ws/now-playing", api.NowPlayingWSHandler(engine))
 
 	c := cors.New(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:5173", "http://127.0.0.1:5173"},
-		AllowedMethods:   []string{"GET", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Content-Type", "Range", "Icy-MetaData"},
+		AllowedOrigins:   []string{"http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"},
+		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
+		AllowedHeaders:   []string{"*", "Accept", "Content-Type", "Range", "Icy-MetaData"},
 		AllowCredentials: true,
 	})
 
@@ -60,7 +63,7 @@ func main() {
 	}
 
 	go func() {
-		log.Println("radio server listening on :8080/stream")
+		log.Println("Radio Server listening on localhost:8080/stream")
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("HTTP server error: %v", err)
 		}
