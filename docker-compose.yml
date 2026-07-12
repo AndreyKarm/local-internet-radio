@@ -44,11 +44,15 @@ services:
   web:
     build:
       context: ./frontend
+      args:
+        PUBLIC_RADIO_URL: "http://localhost:8080"
     container_name: radio-web
     depends_on:
       - radio
     environment:
-      - RADIO_URL=http://localhost:8080
+      - RADIO_INTERNAL_URL=http://radio:8080
+      - ORIGIN=http://localhost:3000
+      - BODY_SIZE_LIMIT=50M
     ports:
       - "3000:3000"
 

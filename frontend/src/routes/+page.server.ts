@@ -1,9 +1,12 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions } from './$types';
-import { RADIO_URL } from '$lib';
+import { env } from '$env/dynamic/private';
+
+const RADIO_INTERNAL_URL = env.RADIO_INTERNAL_URL ?? 'http://localhost:8080';
 
 export const actions = {
   upload: async ({ request, fetch }) => {
+    console.log('Uploading track');
     const data = await request.formData();
     const file = data.get('track') as File | null;
 
@@ -19,7 +22,7 @@ export const actions = {
     backendFormData.append('track', file);
 
     try {
-      const res = await fetch(`${RADIO_URL}/upload`, {
+      const res = await fetch(`${RADIO_INTERNAL_URL}/upload`, {
         method: 'POST',
         body: backendFormData
       });
