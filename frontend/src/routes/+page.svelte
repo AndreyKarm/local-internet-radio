@@ -18,7 +18,14 @@
 	import { enhance } from '$app/forms';
 	import { settings } from '$lib/store/settings';
 	import type { SubmitFunction } from './$types';
-	import { Pause, Play, Volume2, VolumeX } from '@lucide/svelte';
+	import {
+		// ArrowRight,
+		Pause,
+		Play,
+		// Shuffle,
+		Volume2,
+		VolumeX
+	} from '@lucide/svelte';
 	import { RADIO_URL } from '$lib';
 
 	// State
@@ -196,13 +203,27 @@
 			/>
 		</div>
 
-		<button onclick={togglePlay} class="play">
-			{#if $settings.playing}
-				<Pause />
-			{:else}
-				<Play />
-			{/if}
-		</button>
+		<div class="controls">
+			<!-- <form method="POST" action="?/shuffle" use:enhance>
+				<button type="submit">
+					<Shuffle />
+				</button>
+			</form> -->
+
+			<button onclick={togglePlay} class="play">
+				{#if $settings.playing}
+					<Pause />
+				{:else}
+					<Play />
+				{/if}
+			</button>
+
+			<!-- <form method="POST" action="?/skip" use:enhance>
+				<button type="submit">
+					<ArrowRight />
+				</button>
+			</form> -->
+		</div>
 	</div>
 
 	<div class="upload-section">
@@ -237,13 +258,13 @@
 		</form>
 	</div>
 
-	{#if data}
+	<!-- {#if data}
 		<div>
 			{#each data.queue as item, i (i)}
 				<p>{item}</p>
 			{/each}
 		</div>
-	{/if}
+	{/if} -->
 </main>
 
 <style>
@@ -273,6 +294,14 @@
 		height: 20rem;
 		object-fit: cover;
 		border-radius: 0.5rem;
+	}
+
+	.controls {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		gap: 2rem;
 	}
 
 	.play {
