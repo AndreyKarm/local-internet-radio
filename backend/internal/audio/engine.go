@@ -143,7 +143,6 @@ func (e *Engine) playbackLoop(ctx context.Context, w io.Writer) {
 		for {
 			e.trackMu.RLock()
 			idx := e.current.QueueIndex
-			looping := e.loopMode
 			e.trackMu.RUnlock()
 
 			if idx < 0 {
@@ -174,10 +173,11 @@ func (e *Engine) playbackLoop(ctx context.Context, w io.Writer) {
 					log.Printf("stream error: %v\n", err)
 				}
 
-				if looping && idx == len(tracks)-1 {
-					e.trackMu.Lock()
-					e.current.QueueIndex = idx
-					e.trackMu.Unlock()
+				e.trackMu.RLock()
+				isLooping := e.loopMode
+				e.trackMu.RUnlock()
+
+				if isLooping {
 					e.triggerSkip()
 				} else if idx == len(tracks)-1 {
 					e.trackMu.Lock()
