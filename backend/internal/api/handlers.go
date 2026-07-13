@@ -224,6 +224,44 @@ func PlayByIndexHandler(engine *audio.Engine) http.HandlerFunc {
 	}
 }
 
+func DeleteHandler(store *storage.S3Store, engine *audio.Engine) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		key := r.URL.Query().Get("key")
+		if key == "" {
+			http.Error(w, "Missing key parameter", http.StatusBadRequest)
+			return
+		}
+
+		log.Printf("Delete requested for key: %q", key)
+
+		if err := store.DeleteTrack(r.Context(), key); err != nil {
+			http.Error(w, "Failed to delete track: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		log.Printf("Deleted track: %s", key)
+
+		if err := engine.RefreshPlaylist(r.Context()); err != nil {
+			log.Printf("failed to refresh playlist after delete: %v", err)
+		}
+
+		// If the deleted track was playing, skip off of it immediately.
+		if engine.GetNowPlaying().Key == key {
+			engine.Skip()
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"status": "deleted",
+			"key":    key,
+		})
+	}
+}
+
 // Websockets
 func NowPlayingWSHandler(engine *audio.Engine) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

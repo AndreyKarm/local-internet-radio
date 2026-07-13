@@ -47,13 +47,13 @@ services:
     build:
       context: ./frontend
       args:
-        PUBLIC_RADIO_URL: "http://192.168.196.17:8080"
+        VITE_RADIO_URL: "http://192.168.196.17:8080"
     container_name: radio-web
     depends_on:
       - radio
     environment:
-      - RADIO_INTERNAL_URL=http://192.168.196.17:8080
       - ORIGIN=http://192.168.196.17:3000
+      - RADIO_INTERNAL_URL=http://radio:8080
       - BODY_SIZE_LIMIT=50M
     ports:
       - "3000:3000"

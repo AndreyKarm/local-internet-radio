@@ -58,6 +58,7 @@ func main() {
 	mux.HandleFunc("/queue", api.QueueHandler(engine))
 	mux.HandleFunc("/shuffle", api.ShuffleHandler(engine))
 	mux.HandleFunc("/upload", api.UploadHandler(store, engine))
+	mux.HandleFunc("/delete", api.DeleteHandler(store, engine))
 	mux.HandleFunc("/skip", api.SkipHandler(engine))
 	mux.HandleFunc("/previous", api.PreviousHandler(engine))
 	mux.HandleFunc("/loop", api.LoopHandler(engine))
@@ -67,7 +68,7 @@ func main() {
 
 	c := cors.New(cors.Options{
 		AllowedOrigins:   []string{"http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"},
-		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
+		AllowedMethods:   []string{"GET", "POST", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Content-Type", "Range", "Icy-MetaData"},
 		ExposedHeaders:   []string{"Content-Length"},
 		AllowCredentials: true,
@@ -87,12 +88,12 @@ func main() {
 	}
 
 	server := &http.Server{
-		Addr:    fmt.Sprintf("127.0.0.1:%d", serverPort),
+		Addr:    fmt.Sprintf(":%d", serverPort),
 		Handler: handlerWithCors,
 	}
 
 	go func() {
-		log.Printf("Radio Server listening on 127.0.0.1:%d/stream", serverPort)
+		log.Printf("Radio Server listening on localhost:%d/stream", serverPort)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("HTTP server error: %v", err)
 		}

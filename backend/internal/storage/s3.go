@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -76,4 +77,11 @@ func (s *S3Store) UploadTrack(ctx context.Context, key string, body io.Reader, s
 		ContentType: "audio/mpeg",
 	})
 	return err
+}
+
+func (s *S3Store) DeleteTrack(ctx context.Context, key string) error {
+	if _, err := s.client.StatObject(ctx, s.bucketName, key, minio.StatObjectOptions{}); err != nil {
+		return fmt.Errorf("object %q not found: %w", key, err)
+	}
+	return s.client.RemoveObject(ctx, s.bucketName, key, minio.RemoveObjectOptions{})
 }

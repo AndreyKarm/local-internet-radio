@@ -2,11 +2,10 @@ import { fail } from '@sveltejs/kit';
 import type { Actions } from './$types';
 import { env } from '$env/dynamic/private';
 
-const RADIO_INTERNAL_URL = env.VITE_RADIO_URL ?? 'http://127.0.0.1:8080';
+const RADIO_URL = env.VITE_RADIO_URL ?? 'http://127.0.0.1:8080';
 
 export const actions = {
   upload: async ({ request, fetch }) => {
-    console.log('Uploading track');
     const data = await request.formData();
     const file = data.get('track') as File | null;
 
@@ -22,7 +21,7 @@ export const actions = {
     backendFormData.append('track', file);
 
     try {
-      const res = await fetch(`${RADIO_INTERNAL_URL}/upload`, {
+      const res = await fetch(`${RADIO_URL}/upload`, {
         method: 'POST',
         body: backendFormData
       });
@@ -41,7 +40,7 @@ export const actions = {
 
   shuffle: async ({ fetch }) => {
     try {
-      const res = await fetch(`${RADIO_INTERNAL_URL}/shuffle`, {
+      const res = await fetch(`${RADIO_URL}/shuffle`, {
         method: 'POST'
       });
 
@@ -57,7 +56,7 @@ export const actions = {
 
   loop: async ({ fetch }) => {
     try {
-      const res = await fetch(`${RADIO_INTERNAL_URL}/loop`, {
+      const res = await fetch(`${RADIO_URL}/loop`, {
         method: 'POST'
       });
 
@@ -73,7 +72,7 @@ export const actions = {
 
   previous: async ({ fetch }) => {
     try {
-      const res = await fetch(`${RADIO_INTERNAL_URL}/previous`, {
+      const res = await fetch(`${RADIO_URL}/previous`, {
         method: 'POST'
       });
 
@@ -89,7 +88,7 @@ export const actions = {
 
   skip: async ({ fetch }) => {
     try {
-      const res = await fetch(`${RADIO_INTERNAL_URL}/skip`, {
+      const res = await fetch(`${RADIO_URL}/skip`, {
         method: 'POST'
       });
 
@@ -112,7 +111,7 @@ export const actions = {
     }
 
     try {
-      const res = await fetch(`${RADIO_INTERNAL_URL}/play?index=${index}`, {
+      const res = await fetch(`${RADIO_URL}/play?index=${index}`, {
         method: 'POST'
       });
 
@@ -125,6 +124,32 @@ export const actions = {
     } catch (err) {
       console.error('Play failed:', err);
       return fail(500, { message: 'Internal server error while playing.' });
+    }
+  },
+
+  delete: async ({ request, fetch }) => {
+    const data = await request.formData();
+    const key = data.get('key');
+
+    if (!key) {
+      return fail(400, { message: 'Key is required' });
+    }
+
+    try {
+      const res = await fetch(
+        `${RADIO_URL}/delete?key=${encodeURIComponent(key.toString())}`,
+        { method: 'DELETE' }
+      );
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        return fail(res.status, { message: `Backend error: ${errorText}` });
+      }
+
+      return { success: true };
+    } catch (err) {
+      console.error('Delete failed:', err);
+      return fail(500, { message: 'Internal server error while deleting.' });
     }
   },
 } satisfies Actions;

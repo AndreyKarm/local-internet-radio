@@ -121,6 +121,10 @@ func (e *Engine) Run(ctx context.Context) {
 func (e *Engine) playbackLoop(ctx context.Context, w io.Writer) {
 	pace := newPacer(bytesPerSecond)
 
+	if err := e.refreshPlaylist(ctx); err != nil {
+		return
+	}
+
 	for {
 		if err := e.refreshPlaylist(ctx); err != nil {
 			return
@@ -136,62 +140,66 @@ func (e *Engine) playbackLoop(ctx context.Context, w io.Writer) {
 			case <-ctx.Done():
 				return
 			case <-time.After(playlistRetryDelay):
+				if err := e.refreshPlaylist(ctx); err != nil {
+					return
+				}
 				continue
 			}
 		}
 
-		for {
+		e.trackMu.RLock()
+		idx := e.current.QueueIndex
+		e.trackMu.RUnlock()
+
+		if idx < 0 {
+			idx = 0
+		}
+		if idx >= len(tracks) {
+			idx = 0
+		}
+
+		currentTrack := tracks[idx]
+
+		trackCtx, cancel := context.WithCancel(ctx)
+		e.trackMuControl.Lock()
+		e.cancelTrack = cancel
+		e.trackMuControl.Unlock()
+
+		err := e.playTrack(trackCtx, w, pace, currentTrack, idx, tracks)
+
+		cancel()
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-e.skipSignal:
+			// goto nextIteration
+		default:
+			if err != nil && err != io.EOF && trackCtx.Err() == nil {
+				log.Printf("stream error: %v\n", err)
+			}
+
 			e.trackMu.RLock()
-			idx := e.current.QueueIndex
+			isLooping := e.loopMode
 			e.trackMu.RUnlock()
 
-			if idx < 0 {
-				idx = 0
+			if isLooping {
+				// e.triggerSkip()
+			} else if idx == len(tracks)-1 {
+				e.trackMu.Lock()
+				e.current.QueueIndex = 0
+				e.trackMu.Unlock()
+				// e.triggerSkip()
+			} else {
+				e.trackMu.Lock()
+				e.current.QueueIndex++
+				e.trackMu.Unlock()
+				// e.triggerSkip()
 			}
-			if idx >= len(tracks) {
-				idx = 0
-			}
+		}
 
-			currentTrack := tracks[idx]
-
-			trackCtx, cancel := context.WithCancel(ctx)
-			e.trackMuControl.Lock()
-			e.cancelTrack = cancel
-			e.trackMuControl.Unlock()
-
-			err := e.playTrack(trackCtx, w, pace, currentTrack, idx, tracks)
-
-			cancel()
-
-			select {
-			case <-ctx.Done():
-				return
-			case <-e.skipSignal:
-				goto nextIteration
-			default:
-				if err != nil && err != io.EOF && trackCtx.Err() == nil {
-					log.Printf("stream error: %v\n", err)
-				}
-
-				e.trackMu.RLock()
-				isLooping := e.loopMode
-				e.trackMu.RUnlock()
-
-				if isLooping {
-					// e.triggerSkip()
-				} else if idx == len(tracks)-1 {
-					e.trackMu.Lock()
-					e.current.QueueIndex = 0
-					e.trackMu.Unlock()
-					// e.triggerSkip()
-				} else {
-					e.trackMu.Lock()
-					e.current.QueueIndex++
-					e.trackMu.Unlock()
-					// e.triggerSkip()
-				}
-			}
-		nextIteration:
+		if err := e.refreshPlaylist(ctx); err != nil {
+			return
 		}
 	}
 }
@@ -265,7 +273,28 @@ func (e *Engine) refreshPlaylist(ctx context.Context) error {
 	e.playlistMu.Lock()
 	e.activePlaylist = newPlaylist
 	e.playlistMu.Unlock()
+
+	e.syncQueueWithPlaylist(newPlaylist)
+
 	return nil
+}
+
+func (e *Engine) syncQueueWithPlaylist(tracks []TrackInfo) {
+	e.trackMu.Lock()
+	currentKey := e.current.Key
+	newIndex := 0
+	for i, t := range tracks {
+		if t.Key == currentKey {
+			newIndex = i
+			break
+		}
+	}
+	e.current.Queue = tracks
+	e.current.QueueIndex = newIndex
+	updated := e.current
+	e.trackMu.Unlock()
+
+	e.broadcastNowPlaying(updated)
 }
 
 func (e *Engine) Shuffle() {
