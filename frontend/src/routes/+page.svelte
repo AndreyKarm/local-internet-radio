@@ -11,6 +11,9 @@
 	const player = new PlayerState();
 
 	let currentTrack = $derived(player.data);
+	let currentQueue = $derived(player.queue);
+	let currentIndex = $derived(player.data?.queue_index ?? 0);
+
 	$effect(() => {
 		if (currentTrack && currentTrack.title && player.data) {
 			document.title = songTitle(player.data);
@@ -39,11 +42,12 @@
 		onPlay={() => ($settings.playing = true)}
 		onPause={() => ($settings.playing = false)}
 		audioRef={(el) => player.setAudioElement(el)}
+		{player}
 	/>
 
 	<UploadSection />
 
-	<QueueList queue={player.data?.queue} currentIndex={player.data?.queue_index} />
+	<QueueList queue={currentQueue} {currentIndex} />
 </main>
 
 <style>

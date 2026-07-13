@@ -12,15 +12,23 @@
 		index
 	}: { data: TQueueSong; currently_playing: boolean; index: number } = $props();
 
+	let wrapperElement: HTMLDivElement;
+
 	function confirmDelete(e: SubmitEvent) {
 		const ok = confirm(`Delete "${songTitle(data)}"? This cannot be undone.`);
 		if (!ok) {
 			e.preventDefault();
 		}
 	}
+
+	$effect(() => {
+		if (currently_playing && wrapperElement) {
+			wrapperElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		}
+	});
 </script>
 
-<div class="queue-item-wrapper">
+<div class="queue-item-wrapper" bind:this={wrapperElement}>
 	<form method="POST" action="?/play" use:enhance class="play-form">
 		<input type="hidden" name="index" value={index} />
 

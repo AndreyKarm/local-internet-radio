@@ -6,6 +6,7 @@
 	import type { TSongData } from '$lib/types';
 	import { RADIO_URL } from '$lib';
 	import { songTitle } from '$lib/utils';
+	import type { PlayerState } from '$lib/player.svelte';
 
 	let {
 		data,
@@ -17,7 +18,8 @@
 		onVolumeChange,
 		onPlay,
 		onPause,
-		audioRef
+		audioRef,
+		player
 	}: {
 		data: TSongData | undefined;
 		timestamp: number;
@@ -29,6 +31,7 @@
 		onPlay: () => void;
 		onPause: () => void;
 		audioRef: (el: HTMLAudioElement) => void;
+		player: PlayerState;
 	} = $props();
 
 	let coverSrc = $derived(data ? `${RADIO_URL}${data.cover}?t=${timestamp}` : '/boykisser.png');
@@ -63,7 +66,7 @@
 
 	<VolumeControl {volume} {onVolumeChange} />
 
-	<PlayerControls {playing} {onTogglePlay} looping={data?.loop ?? false} />
+	<PlayerControls {playing} {onTogglePlay} looping={data?.loop ?? false} {player} />
 </div>
 
 <style>

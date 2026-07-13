@@ -1,10 +1,11 @@
 import { get } from 'svelte/store';
 import { settings } from '$lib/store/settings';
 import { RADIO_URL } from '$lib';
-import type { TSongData } from '$lib/types';
+import type { TQueueSong, TSongData } from '$lib/types';
 
 export class PlayerState {
   data = $state<TSongData | undefined>(undefined);
+  queue = $state<TQueueSong[]>([]);
   timestamp = $state(Date.now());
   elapsed = $state(0);
   remaining = $state(0);
@@ -73,22 +74,21 @@ export class PlayerState {
     const wsUrl = RADIO_URL.replace(/^http/, 'ws') + '/ws/now-playing';
     this.ws = new WebSocket(wsUrl);
 
-    this.ws.onmessage = (event) => {
+    this.ws.onmessage = async (event) => {
       try {
         const response = JSON.parse(event.data);
 
-        const isFullUpdate = response.title !== undefined || response.track !== undefined;
-
-        if (isFullUpdate) {
+        if (response.track !== undefined || response.title !== undefined) {
           if (this.data?.title !== response.title) {
             this.timestamp = Date.now();
           }
-        }
+          this.data = {
+            ...(this.data as TSongData),
+            ...response
+          } as TSongData;
 
-        this.data = {
-          ...(this.data as TSongData),
-          ...response
-        } as TSongData;
+          await this.refreshQueue();
+        }
 
       } catch (e) {
         console.error('Failed to parse WebSocket message', e);
@@ -104,6 +104,20 @@ export class PlayerState {
       console.error('WebSocket error:', err);
       this.ws?.close();
     };
+  }
+
+  public async refreshQueue() {
+    try {
+      const res = await fetch(`${RADIO_URL}/queue`);
+      const data = await res.json();
+      this.queue = data.queue;
+    } catch (err) {
+      console.error('Failed to refresh queue:', err);
+    }
+  }
+
+  public async triggerManualRefresh() {
+    await this.refreshQueue();
   }
 
   private startTimer() {

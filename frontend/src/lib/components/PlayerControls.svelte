@@ -1,16 +1,32 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { PlayerState } from '$lib/player.svelte';
 	import { ArrowLeft, ArrowRight, Pause, Play, Repeat, Repeat1, Shuffle } from '@lucide/svelte';
+	import type { SubmitFunction } from '@sveltejs/kit';
 
 	let {
 		playing,
 		onTogglePlay,
-		looping = false
-	}: { playing: boolean; onTogglePlay: () => void; looping?: boolean } = $props();
+		looping = false,
+		player
+	}: {
+		playing: boolean;
+		onTogglePlay: () => void;
+		looping?: boolean;
+		player: PlayerState;
+	} = $props();
+
+	const handleShuffle: SubmitFunction = () => {
+		return async ({ result }) => {
+			if (result.type === 'success') {
+				await player.triggerManualRefresh();
+			}
+		};
+	};
 </script>
 
 <div class="controls">
-	<form method="POST" action="?/shuffle" use:enhance>
+	<form method="POST" action="?/shuffle" use:enhance={handleShuffle}>
 		<button type="submit" title="Shuffle">
 			<Shuffle />
 		</button>

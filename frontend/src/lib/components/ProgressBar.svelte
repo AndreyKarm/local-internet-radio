@@ -14,7 +14,10 @@
 <div class="time-display">
 	<span class="time">{formatTime(elapsed)}</span>
 	<div class="progress-bar">
-		<div class="progress-fill" style="width: {(elapsed / duration) * 100}%"></div>
+		<div
+			class="progress-fill"
+			style="width: {duration > 0 ? (elapsed / duration) * 100 : 0}%"
+		></div>
 	</div>
 	<span class="time">-{formatTime(remaining)}</span>
 </div>

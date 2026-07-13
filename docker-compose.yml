@@ -40,6 +40,7 @@ services:
       - ./backend/.env
     environment:
       - S3_ENDPOINT_URL=rustfs:9000 
+      - PORT=8080
     ports:
       - "8080:8080"
 
@@ -53,7 +54,7 @@ services:
       - radio
     environment:
       - ORIGIN=http://192.168.196.17:3000
-      - RADIO_INTERNAL_URL=http://radio:8080
+      - VITE_RADIO_URL=http://radio:8080
       - BODY_SIZE_LIMIT=50M
     ports:
       - "3000:3000"
