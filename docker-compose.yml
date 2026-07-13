@@ -38,6 +38,8 @@ services:
       # - postgres
     env_file:
       - ./backend/.env
+    environment:
+      - S3_ENDPOINT_URL=rustfs:9000 
     ports:
       - "8080:8080"
 
