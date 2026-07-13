@@ -46,7 +46,7 @@
 <div class="card">
 	<CoverImage src={coverSrc} />
 
-	{#if data}
+	{#if data && data.title}
 		<h2>
 			{data.title.replace('.mp3', '')}
 			{#if !data.title.includes(data.artist) && data.artist != 'Unknown Artist'}

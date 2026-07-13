@@ -11,9 +11,9 @@
 
 	function handleWheel(e: WheelEvent) {
 		e.preventDefault();
-		const power = 0.01;
+		const power = 0.0005;
 		if (e.deltaY < 0) {
-			onVolumeChange(Math.min(1, volume + power));
+			onVolumeChange(Math.min(0.1, volume + power));
 		} else if (e.deltaY > 0) {
 			onVolumeChange(Math.max(0, volume - power));
 		}
@@ -30,12 +30,12 @@
 	<input
 		type="range"
 		min={0}
-		max={1}
-		step={0.005}
+		max={0.1}
+		step={0.0005}
 		value={volume}
 		oninput={handleInput}
 		class="volume-slider"
-		style="--progress: {volume * 100}%"
+		style="--progress: {volume * 1000}%"
 	/>
 </div>
 

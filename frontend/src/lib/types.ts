@@ -7,8 +7,10 @@ export type TSongData = {
   duration: number;
   started_at: number;
 
-  queue: TQueueSong[];
+  queue?: TQueueSong[];
   queue_index: number;
+
+  listeners?: number;
 };
 
 export type TQueueSong = {

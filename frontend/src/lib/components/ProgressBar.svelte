@@ -25,7 +25,6 @@
 		align-items: center;
 		width: 100%;
 		gap: 0.5rem;
-		font-family: monospace;
 		font-size: 0.9rem;
 	}
 

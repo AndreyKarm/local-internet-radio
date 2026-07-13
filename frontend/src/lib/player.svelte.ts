@@ -76,10 +76,20 @@ export class PlayerState {
     this.ws.onmessage = (event) => {
       try {
         const response = JSON.parse(event.data);
-        if (this.data?.title !== response.title) {
-          this.timestamp = Date.now();
+
+        const isSongChange = response.title !== undefined || response.track !== undefined;
+
+        if (isSongChange) {
+          if (this.data?.title !== response.title) {
+            this.timestamp = Date.now();
+          }
         }
-        this.data = response;
+
+        this.data = {
+          ...(this.data as TSongData),
+          ...response
+        } as TSongData;
+
       } catch (e) {
         console.error('Failed to parse WebSocket message', e);
       }

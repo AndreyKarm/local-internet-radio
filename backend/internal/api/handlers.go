@@ -195,6 +195,7 @@ func NowPlayingWSHandler(engine *audio.Engine) http.HandlerFunc {
 					"started_at":  current.StartedAt,
 					"queue":       current.Queue,
 					"queue_index": current.QueueIndex,
+					"listeners":   engine.GetListenerCount(),
 				})
 				if err != nil {
 					log.Printf("client disconnected from now-playing ws: %v", err)
@@ -205,6 +206,10 @@ func NowPlayingWSHandler(engine *audio.Engine) http.HandlerFunc {
 				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 					return
 				}
+				conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				conn.WriteJSON(map[string]any{
+					"listeners": engine.GetListenerCount(),
+				})
 			case <-done:
 				return
 			}

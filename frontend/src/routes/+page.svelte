@@ -5,6 +5,7 @@
 	import PlayerCard from '$lib/components/PlayerCard.svelte';
 	import UploadSection from '$lib/components/UploadSection.svelte';
 	import QueueList from '$lib/components/QueueList.svelte';
+	import Listeners from '$lib/components/Listeners.svelte';
 
 	const player = new PlayerState();
 
@@ -15,6 +16,8 @@
 </script>
 
 <main class="container">
+	<Listeners listeners={player.data?.listeners} />
+
 	<PlayerCard
 		data={player.data}
 		timestamp={player.timestamp}

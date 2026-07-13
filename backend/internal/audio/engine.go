@@ -409,6 +409,12 @@ func (e *Engine) GetNowPlayingCover() ([]byte, string) {
 	return e.GetCover()
 }
 
+func (e *Engine) GetListenerCount() int {
+	e.listMu.Lock()
+	defer e.listMu.Unlock()
+	return len(e.listeners)
+}
+
 // Pacer
 func (p *pacer) copy(ctx context.Context, dst io.Writer, src io.Reader) error {
 	buf := make([]byte, pcmChunkSize)
