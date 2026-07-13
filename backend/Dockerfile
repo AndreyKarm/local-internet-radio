@@ -15,5 +15,7 @@ WORKDIR /app
 
 COPY --from=build /app/radio .
 
+ENV S3_ENDPOINT_URL="rustfs:9000"
+
 EXPOSE 8080
 CMD ["./radio"]

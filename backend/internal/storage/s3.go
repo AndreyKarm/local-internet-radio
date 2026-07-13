@@ -26,7 +26,10 @@ func NewS3Store() (*S3Store, error) {
 	bucketName := os.Getenv("S3_BUCKET_NAME")
 	accessKey := os.Getenv("S3_ACCESS_KEY_ID")
 	secretKey := os.Getenv("S3_SECRET_ACCESS_KEY")
-	useSSL, _ := strconv.ParseBool(os.Getenv("S3_USE_SSL"))
+	useSSL, err := strconv.ParseBool(os.Getenv("S3_USE_SSL"))
+	if err != nil {
+		useSSL = false
+	}
 
 	client, err := minio.New(s3URL, &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
@@ -60,6 +63,7 @@ func (s *S3Store) ListTracks(ctx context.Context) ([]string, error) {
 		}
 		keys = append(keys, obj.Key)
 	}
+
 	return keys, nil
 }
 

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -18,20 +19,23 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-func HealthHandler(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("ok"))
-}
-
+// Types
 type NowPlayingProvider interface {
 	GetNowPlaying() audio.NowPlaying
 }
 
 type QueueProvider interface {
-	GetQueue() (queue []string, currentIndex int)
+	GetQueue() (queue []audio.TrackInfo, currentIndex int)
 }
 
 type CoverProvider interface {
-	GetCover() ([]byte, string)
+	GetNowPlayingCover() ([]byte, string)
+	GetCoverByKey(ctx context.Context, key string) ([]byte, string, error)
+}
+
+// REST API
+func HealthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("ok"))
 }
 
 func NowPlayingHandler(np NowPlayingProvider) http.HandlerFunc {
@@ -52,6 +56,34 @@ func NowPlayingHandler(np NowPlayingProvider) http.HandlerFunc {
 	}
 }
 
+func CoverHandler(cp CoverProvider) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		key := r.URL.Query().Get("key")
+		var data []byte
+		var mime string
+		var err error
+
+		if key != "" {
+			// Fetch specific cover for a queue item
+			data, mime, err = cp.GetCoverByKey(r.Context(), key)
+		} else {
+			// Fetch the currently playing cover
+			data, mime = cp.GetNowPlayingCover()
+		}
+
+		if err != nil || len(data) == 0 {
+			http.NotFound(w, r)
+			return
+		}
+		if mime == "" {
+			mime = "image/jpeg"
+		}
+		w.Header().Set("Content-Type", mime)
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write(data)
+	}
+}
+
 func QueueHandler(qp QueueProvider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		queue, index := qp.GetQueue()
@@ -63,6 +95,58 @@ func QueueHandler(qp QueueProvider) http.HandlerFunc {
 	}
 }
 
+func ShuffleHandler(engine *audio.Engine) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		engine.Shuffle()
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"shuffled"}`))
+	}
+}
+
+func UploadHandler(store *storage.S3Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Restrict to POST methods
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse the multipart form with a 32 MB max memory limit
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			http.Error(w, "Failed to parse form: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// Retrieve the file from form data
+		file, header, err := r.FormFile("track")
+		if err != nil {
+			http.Error(w, "Invalid file", http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+
+		// Stream the file directly to MinIO
+		err = store.UploadTrack(r.Context(), header.Filename, file, header.Size)
+		if err != nil {
+			http.Error(w, "Failed to upload to S3", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"status": "success",
+			"file":   header.Filename,
+		})
+	}
+}
+
+// Websockets
 func NowPlayingWSHandler(engine *audio.Engine) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
@@ -125,58 +209,5 @@ func NowPlayingWSHandler(engine *audio.Engine) http.HandlerFunc {
 				return
 			}
 		}
-	}
-}
-
-func CoverHandler(cp CoverProvider) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		data, mime := cp.GetCover()
-		if len(data) == 0 {
-			http.NotFound(w, r)
-			return
-		}
-		if mime == "" {
-			mime = "image/jpeg"
-		}
-		w.Header().Set("Content-Type", mime)
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Write(data)
-	}
-}
-
-func UploadHandler(store *storage.S3Store) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Restrict to POST methods
-		if r.Method != http.MethodPost {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		// Parse the multipart form with a 32 MB max memory limit
-		if err := r.ParseMultipartForm(32 << 20); err != nil {
-			http.Error(w, "Failed to parse form: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		// Retrieve the file from form data
-		file, header, err := r.FormFile("track")
-		if err != nil {
-			http.Error(w, "Invalid file", http.StatusBadRequest)
-			return
-		}
-		defer file.Close()
-
-		// Stream the file directly to MinIO
-		err = store.UploadTrack(r.Context(), header.Filename, file, header.Size)
-		if err != nil {
-			http.Error(w, "Failed to upload to S3", http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
-			"status": "success",
-			"file":   header.Filename,
-		})
 	}
 }

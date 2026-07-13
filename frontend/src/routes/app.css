@@ -53,73 +53,27 @@ button:hover {
 	background: var(--accent);
 }
 
-/* Volume Slider */
-.volume-control {
-	display: flex;
-	align-items: center;
-	width: 100%;
-	gap: 1rem;
+/* Scrool Bar */
+html {
+	scrollbar-width: thin;
+	scrollbar-color: #333 var(--background);
+	scrollbar-gutter: stable;
 }
 
-.volume-slider {
-	-webkit-appearance: none;
-	appearance: none;
-	width: 100%;
-	height: 0.5rem;
-	background: linear-gradient(
-		to right,
-		var(--primary) var(--progress),
-		var(--background) var(--progress)
-	);
-	border-radius: 1rem;
-	outline: none;
-	cursor: pointer;
+::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
 }
 
-.volume-slider::-webkit-slider-thumb {
-	-webkit-appearance: none;
-	appearance: none;
-	width: 1.2rem;
-	height: 1.2rem;
-	border-radius: 50%;
-	background: var(--text);
-	cursor: pointer;
-	transition:
-		transform 0.1s,
-		background 0.2s;
+::-webkit-scrollbar-track {
+	background: #16161a;
 }
 
-.volume-slider::-webkit-slider-thumb:hover {
-	transform: scale(1.2);
-	background: var(--accent);
+::-webkit-scrollbar-thumb {
+	background: #333;
+	border-radius: 5px;
 }
 
-.volume-slider::-moz-range-thumb {
-	width: 1.2rem;
-	height: 1.2rem;
-	border-radius: 50%;
-	background: var(--text);
-	border: none;
-	cursor: pointer;
-	transition: all 0.2s;
-}
-
-.volume-slider::-moz-range-thumb:hover {
-	transform: scale(1.2);
-	background: var(--accent);
-}
-
-/* Progress Bar */
-.progress-bar {
-	flex-grow: 1;
-	height: 0.5rem;
-	background: var(--background);
-	border-radius: 1rem;
-	overflow: hidden;
-}
-
-.progress-fill {
-	height: 100%;
-	background: var(--primary);
-	transition: width 1s linear;
+::-webkit-scrollbar-thumb:hover {
+	background: #333;
 }

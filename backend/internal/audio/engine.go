@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"sort"
@@ -29,8 +30,15 @@ const (
 	playlistRetryDelay = 5 * time.Second
 )
 
-// NowPlaying describes the track currently on air, plus the full playlist
-// order so clients can render a "coming up next" queue.
+// Types
+type TrackInfo struct {
+	Key      string `json:"key"`
+	Title    string `json:"title"`
+	Artist   string `json:"artist"`
+	Album    string `json:"album"`
+	CoverURL string `json:"cover_url"`
+}
+
 type NowPlaying struct {
 	Key        string
 	Title      string
@@ -38,12 +46,15 @@ type NowPlaying struct {
 	Album      string
 	Duration   int
 	StartedAt  int64
-	Queue      []string // track keys in play order
-	QueueIndex int      // index of Key within Queue
+	Queue      []TrackInfo
+	QueueIndex int
 }
 
-// Engine owns the decode -> encode -> broadcast pipeline and the current
-// playback / queue state.
+type pacer struct {
+	bytesPerSecond int
+	next           time.Time
+}
+
 type Engine struct {
 	store       *storage.S3Store
 	broadcaster *broadcaster.Broadcaster
@@ -53,17 +64,18 @@ type Engine struct {
 	cover     []byte
 	coverMIME string
 
+	playlistMu     sync.Mutex
+	activePlaylist []TrackInfo
+
 	listMu    sync.Mutex
 	listeners []chan NowPlaying
 }
 
+// Engine
 func NewEngine(s *storage.S3Store, b *broadcaster.Broadcaster) *Engine {
 	return &Engine{store: s, broadcaster: b}
 }
 
-// Run drives the whole pipeline until ctx is cancelled: a background
-// goroutine feeds raw PCM into an ffmpeg encoder, and the main goroutine
-// reads the encoded mp3 stream and fans it out to listeners.
 func (e *Engine) Run(ctx context.Context) {
 	encoder := exec.CommandContext(ctx, "ffmpeg",
 		"-hide_banner", "-loglevel", "error",
@@ -96,16 +108,20 @@ func (e *Engine) Run(ctx context.Context) {
 	wg.Wait()
 }
 
-// playbackLoop repeatedly refreshes the playlist and plays through it,
-// feeding decoded PCM into w in real time.
 func (e *Engine) playbackLoop(ctx context.Context, w io.Writer) {
 	pace := newPacer(bytesPerSecond)
 
 	for {
-		tracks, err := e.refreshPlaylist(ctx)
-		if err != nil {
-			return // context cancelled
+		if err := e.refreshPlaylist(ctx); err != nil {
+			return
 		}
+
+		// 2. Get the tracks to play from our protected activePlaylist
+		e.playlistMu.Lock()
+		tracks := make([]TrackInfo, len(e.activePlaylist))
+		copy(tracks, e.activePlaylist)
+		e.playlistMu.Unlock()
+
 		if len(tracks) == 0 {
 			select {
 			case <-ctx.Done():
@@ -115,87 +131,183 @@ func (e *Engine) playbackLoop(ctx context.Context, w io.Writer) {
 			}
 		}
 
-		for i, key := range tracks {
+		for i, info := range tracks {
 			if ctx.Err() != nil {
 				return
 			}
-			e.playTrack(ctx, w, pace, key, i, tracks)
+			e.playTrack(ctx, w, pace, info, i, tracks)
 		}
 	}
 }
 
-// refreshPlaylist lists available tracks (sorted for a stable queue order),
-// retrying on failure until ctx is done.
-func (e *Engine) refreshPlaylist(ctx context.Context) ([]string, error) {
-	for {
-		tracks, err := e.store.ListTracks(ctx)
-		if err == nil {
-			sort.Strings(tracks)
-			return tracks, nil
-		}
+func (e *Engine) refreshPlaylist(ctx context.Context) error {
+	keys, err := e.store.ListTracks(ctx)
+	if err != nil {
 		log.Println("failed to list tracks, retrying in 5s:", err)
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return ctx.Err()
 		case <-time.After(playlistRetryDelay):
+			return nil
 		}
+	}
+
+	sort.Strings(keys)
+
+	var newPlaylist []TrackInfo
+	for _, key := range keys {
+		info := e.getTrackInfo(ctx, key)
+		newPlaylist = append(newPlaylist, info)
+	}
+
+	e.playlistMu.Lock()
+	e.activePlaylist = newPlaylist
+	e.playlistMu.Unlock()
+	return nil
+}
+
+func (e *Engine) Shuffle() {
+	e.playlistMu.Lock()
+	defer e.playlistMu.Unlock()
+
+	if len(e.activePlaylist) <= 1 {
+		return
+	}
+
+	// 1. Identify the currently playing song key
+	e.trackMu.RLock()
+	currentKey := e.current.Key
+	e.trackMu.RUnlock()
+
+	// 2. Separate the current song from the rest
+	var others []TrackInfo
+	var currentTrackInfo *TrackInfo
+
+	for _, t := range e.activePlaylist {
+		if t.Key == currentKey {
+			temp := t
+			currentTrackInfo = &temp
+		} else {
+			others = append(others, t)
+		}
+	}
+
+	if currentTrackInfo == nil {
+		rand.Shuffle(len(e.activePlaylist), func(i, j int) {
+			e.activePlaylist[i], e.activePlaylist[j] = e.activePlaylist[j], e.activePlaylist[i]
+		})
+	} else {
+		// 3. Shuffle the "others" slice
+		rand.Shuffle(len(others), func(i, j int) {
+			others[i], others[j] = others[j], others[i]
+		})
+
+		// 4. Rebuild the playlist: [Current Song] + [Shuffled Others]
+		newPlaylist := make([]TrackInfo, 0, len(e.activePlaylist))
+		newPlaylist = append(newPlaylist, *currentTrackInfo)
+		newPlaylist = append(newPlaylist, others...)
+		e.activePlaylist = newPlaylist
+	}
+
+	e.trackMu.Lock()
+
+	newQueue := make([]TrackInfo, len(e.activePlaylist))
+	copy(newQueue, e.activePlaylist)
+
+	e.current.Queue = newQueue
+	e.current.QueueIndex = 0
+	updatedCurrent := e.current
+	e.trackMu.Unlock()
+
+	e.broadcastNowPlaying(updatedCurrent)
+}
+
+func (e *Engine) getTrackInfo(ctx context.Context, key string) TrackInfo {
+	obj, err := e.store.GetObject(ctx, key)
+	if err != nil {
+		return TrackInfo{Key: key, Title: key}
+	}
+	defer obj.Close()
+
+	track, _, err := metadata.Parse(obj, key)
+	if err != nil {
+		return TrackInfo{Key: key, Title: key}
+	}
+
+	return TrackInfo{
+		Key:      key,
+		Title:    track.Title,
+		Artist:   track.Artist,
+		Album:    track.Album,
+		CoverURL: fmt.Sprintf("/now-playing/cover?key=%s", key),
 	}
 }
 
-// playTrack fetches, decodes and streams a single track's PCM data.
-func (e *Engine) playTrack(ctx context.Context, w io.Writer, pace *pacer, key string, index int, queue []string) {
-	obj, err := e.store.GetObject(ctx, key)
+func (e *Engine) playTrack(ctx context.Context, w io.Writer, pace *pacer, info TrackInfo, index int, queue []TrackInfo) {
+	obj, err := e.store.GetObject(ctx, info.Key)
 	if err != nil {
-		log.Println("failed to open object:", key, err)
+		log.Println("failed to open object:", info.Key, err)
 		return
 	}
 	defer obj.Close()
 
-	track, data, err := metadata.Parse(obj, key)
+	track, data, err := metadata.Parse(obj, info.Key)
 	if err != nil {
-		log.Printf("failed to parse %s: %v\n", key, err)
+		log.Printf("failed to parse %s: %v\n", info.Key, err)
 		return
 	}
 
 	duration := probeDuration(ctx, data)
 	log.Printf("now playing (%d/%d): %s\n", index+1, len(queue), track.StreamTitle())
-	e.setNowPlaying(key, track, duration, queue, index)
+
+	e.setNowPlayingFromInfo(info.Key, track, duration, queue, index)
 
 	decoded, cleanup, err := decodeMP3(ctx, data)
 	if err != nil {
-		log.Printf("failed to start decoder for %s: %v\n", key, err)
+		log.Printf("failed to start decoder for %s: %v\n", info.Key, err)
 		return
 	}
 	defer cleanup()
 
 	if err := pace.copy(ctx, w, decoded); err != nil && ctx.Err() == nil {
-		log.Printf("stream error for %s: %v\n", key, err)
+		log.Printf("stream error for %s: %v\n", info.Key, err)
 	}
 }
 
-// decodeMP3 spawns ffmpeg to decode raw mp3 bytes into s16le PCM.
-func decodeMP3(ctx context.Context, data []byte) (io.Reader, func(), error) {
-	cmd := exec.CommandContext(ctx, "ffmpeg",
-		"-hide_banner", "-loglevel", "error",
-		"-f", "mp3", "-i", "pipe:0",
-		"-vn", "-f", "s16le", "-ar", strconv.Itoa(sampleRate), "-ac", strconv.Itoa(channels), "pipe:1",
-	)
-	cmd.Stdin = bytes.NewReader(data)
-	cmd.Stderr = os.Stderr
+func (e *Engine) setNowPlayingFromInfo(key string, t *metadata.Track, duration int, queue []TrackInfo, index int) {
+	e.trackMu.Lock()
+	e.current = NowPlaying{
+		Key:        key,
+		Title:      t.Title,
+		Artist:     t.Artist,
+		Album:      t.Album,
+		Duration:   duration,
+		StartedAt:  time.Now().UnixMilli(),
+		Queue:      queue,
+		QueueIndex: index,
+	}
+	e.cover = t.CoverData
+	e.coverMIME = t.CoverMIME
+	current := e.current
+	e.trackMu.Unlock()
 
-	stdout, err := cmd.StdoutPipe()
+	e.broadcastNowPlaying(current)
+}
+
+func (e *Engine) GetCoverByKey(ctx context.Context, key string) ([]byte, string, error) {
+	obj, err := e.store.GetObject(ctx, key)
 	if err != nil {
-		return nil, nil, err
+		return nil, "", err
 	}
-	if err := cmd.Start(); err != nil {
-		return nil, nil, err
-	}
+	defer obj.Close()
 
-	return stdout, func() { _ = cmd.Wait() }, nil
+	track, _, err := metadata.Parse(obj, key)
+	if err != nil {
+		return nil, "", err
+	}
+	return track.CoverData, track.CoverMIME, nil
 }
 
-// publishEncodedAudio reads encoded mp3 bytes from the encoder and fans
-// them out to all connected listeners.
 func (e *Engine) publishEncodedAudio(r io.Reader) {
 	buf := make([]byte, encodedChunkSize)
 	for {
@@ -211,52 +323,7 @@ func (e *Engine) publishEncodedAudio(r io.Reader) {
 	}
 }
 
-// pacer copies PCM data at a fixed byte rate so playback happens in real
-// time regardless of how fast the source can be read/decoded.
-type pacer struct {
-	bytesPerSecond int
-	next           time.Time
-}
-
-func newPacer(bytesPerSecond int) *pacer {
-	return &pacer{bytesPerSecond: bytesPerSecond, next: time.Now()}
-}
-
-func (p *pacer) copy(ctx context.Context, dst io.Writer, src io.Reader) error {
-	buf := make([]byte, pcmChunkSize)
-	for {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		n, err := src.Read(buf)
-		if n > 0 {
-			if _, writeErr := dst.Write(buf[:n]); writeErr != nil {
-				return writeErr
-			}
-			p.sleepFor(n)
-		}
-		if err != nil {
-			if err == io.EOF {
-				return nil
-			}
-			return err
-		}
-	}
-}
-
-func (p *pacer) sleepFor(n int) {
-	chunkDuration := time.Duration(float64(n) / float64(p.bytesPerSecond) * float64(time.Second))
-	p.next = p.next.Add(chunkDuration)
-	if sleep := time.Until(p.next); sleep > 0 {
-		time.Sleep(sleep)
-	} else {
-		p.next = time.Now()
-	}
-}
-
-// --- Now playing / queue state ---
-
-func (e *Engine) setNowPlaying(key string, t *metadata.Track, duration int, queue []string, index int) {
+func (e *Engine) setNowPlaying(key string, t *metadata.Track, duration int, queue []TrackInfo, index int) {
 	e.trackMu.Lock()
 	e.current = NowPlaying{
 		Key:        key,
@@ -294,7 +361,6 @@ func (e *Engine) Subscribe() chan NowPlaying {
 	e.listeners = append(e.listeners, ch)
 	e.listMu.Unlock()
 
-	// Send the currently playing track immediately upon connecting.
 	ch <- e.GetNowPlaying()
 
 	return ch
@@ -318,9 +384,7 @@ func (e *Engine) GetNowPlaying() NowPlaying {
 	return e.current
 }
 
-// GetQueue returns the full playlist order along with the currently
-// playing index.
-func (e *Engine) GetQueue() (queue []string, currentIndex int) {
+func (e *Engine) GetQueue() (queue []TrackInfo, currentIndex int) {
 	e.trackMu.RLock()
 	defer e.trackMu.RUnlock()
 	return e.current.Queue, e.current.QueueIndex
@@ -332,7 +396,6 @@ func (e *Engine) GetCover() ([]byte, string) {
 	return e.cover, e.coverMIME
 }
 
-// CurrentStreamTitle implements broadcaster.MetadataProvider.
 func (e *Engine) CurrentStreamTitle() string {
 	e.trackMu.RLock()
 	defer e.trackMu.RUnlock()
@@ -342,17 +405,89 @@ func (e *Engine) CurrentStreamTitle() string {
 	return e.current.Title
 }
 
-// probeDuration returns the duration (seconds) of an mp3 blob via ffprobe,
-// piping the data directly through stdin to avoid a temp-file round trip.
-func probeDuration(ctx context.Context, data []byte) int {
-	cmd := exec.CommandContext(ctx, "ffprobe",
-		"-v", "error",
-		"-f", "mp3",
-		"-show_entries", "format=duration",
-		"-of", "default=noprint_wrappers=1:nokey=1",
-		"pipe:0",
+func (e *Engine) GetNowPlayingCover() ([]byte, string) {
+	return e.GetCover()
+}
+
+// Pacer
+func (p *pacer) copy(ctx context.Context, dst io.Writer, src io.Reader) error {
+	buf := make([]byte, pcmChunkSize)
+	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		n, err := src.Read(buf)
+		if n > 0 {
+			if _, writeErr := dst.Write(buf[:n]); writeErr != nil {
+				return writeErr
+			}
+			p.sleepFor(n)
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+func (p *pacer) sleepFor(n int) {
+	chunkDuration := time.Duration(float64(n) / float64(p.bytesPerSecond) * float64(time.Second))
+	p.next = p.next.Add(chunkDuration)
+	if sleep := time.Until(p.next); sleep > 0 {
+		time.Sleep(sleep)
+	} else {
+		p.next = time.Now()
+	}
+}
+
+// Helper Functions
+func decodeMP3(ctx context.Context, data []byte) (io.Reader, func(), error) {
+	cmd := exec.CommandContext(ctx, "ffmpeg",
+		"-hide_banner", "-loglevel", "error",
+		"-f", "mp3", "-i", "pipe:0",
+		"-vn", "-f", "s16le", "-ar", strconv.Itoa(sampleRate), "-ac", strconv.Itoa(channels), "pipe:1",
 	)
 	cmd.Stdin = bytes.NewReader(data)
+	cmd.Stderr = os.Stderr
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, nil, err
+	}
+
+	return stdout, func() { _ = cmd.Wait() }, nil
+}
+
+func newPacer(bytesPerSecond int) *pacer {
+	return &pacer{bytesPerSecond: bytesPerSecond, next: time.Now()}
+}
+
+func probeDuration(ctx context.Context, data []byte) int {
+	tmpfile, err := os.CreateTemp("", "track-*.mp3")
+	if err != nil {
+		log.Printf("failed to create temp file: %v", err)
+		return 0
+	}
+	defer os.Remove(tmpfile.Name())
+
+	if _, err := tmpfile.Write(data); err != nil {
+		log.Printf("failed to write to temp file: %v", err)
+		tmpfile.Close()
+		return 0
+	}
+	tmpfile.Close()
+
+	cmd := exec.CommandContext(ctx, "ffprobe",
+		"-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		tmpfile.Name(),
+	)
 
 	out, err := cmd.Output()
 	if err != nil {

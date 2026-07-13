@@ -40,13 +40,16 @@ func main() {
 	})
 
 	mux := http.NewServeMux()
+	// REST API
 	mux.HandleFunc("/health", api.HealthHandler)
 	mux.HandleFunc("/stream", bc.StreamHandler)
 	mux.HandleFunc("/now-playing", api.NowPlayingHandler(engine))
 	mux.HandleFunc("/now-playing/cover", api.CoverHandler(engine))
 	mux.HandleFunc("/queue", api.QueueHandler(engine))
+	mux.HandleFunc("/shuffle", api.ShuffleHandler(engine))
 	mux.HandleFunc("/upload", api.UploadHandler(store))
 
+	// Websockets
 	mux.HandleFunc("/ws/now-playing", api.NowPlayingWSHandler(engine))
 
 	c := cors.New(cors.Options{

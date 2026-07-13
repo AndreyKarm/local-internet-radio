@@ -8,36 +8,36 @@ import (
 	"sync"
 )
 
-type MetadataProvider interface {
-	CurrentStreamTitle() string
-}
-
 const icyMetaInt = 16000
 
+// Types
 type Broadcaster struct {
 	mu       sync.Mutex
 	clients  map[chan []byte]struct{}
 	metadata MetadataProvider
 }
 
+type icyWriter struct {
+	w           http.ResponseWriter
+	getTitle    func() string
+	bytesToMeta int
+	lastTitle   string
+	buf         bytes.Buffer
+}
+
+type icyInjector interface {
+	Write(p []byte) error
+}
+
+type MetadataProvider interface {
+	CurrentStreamTitle() string
+}
+
+type plainWriter struct{ w http.ResponseWriter }
+
+// Broadcaster Functions
 func New() *Broadcaster {
 	return &Broadcaster{clients: make(map[chan []byte]struct{})}
-}
-
-func (b *Broadcaster) SetMetadataProvider(mp MetadataProvider) {
-	b.mu.Lock()
-	b.metadata = mp
-	b.mu.Unlock()
-}
-
-func (b *Broadcaster) currentTitle() string {
-	b.mu.Lock()
-	mp := b.metadata
-	b.mu.Unlock()
-	if mp == nil {
-		return ""
-	}
-	return mp.CurrentStreamTitle()
 }
 
 func (b *Broadcaster) Subscribe() chan []byte {
@@ -76,7 +76,7 @@ func (b *Broadcaster) StreamHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	if wantsICY {
 		w.Header().Set("icy-metaint", strconv.Itoa(icyMetaInt))
-		w.Header().Set("icy-name", "Local Radio")
+		w.Header().Set("icy-name", "Femboy Radio")
 	}
 
 	flusher, ok := w.(http.Flusher)
@@ -105,25 +105,28 @@ func (b *Broadcaster) StreamHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type icyInjector interface {
-	Write(p []byte) error
-}
-
-type plainWriter struct{ w http.ResponseWriter }
-
 func (p plainWriter) Write(b []byte) error {
 	_, err := p.w.Write(b)
 	return err
 }
 
-type icyWriter struct {
-	w           http.ResponseWriter
-	getTitle    func() string
-	bytesToMeta int
-	lastTitle   string
-	buf         bytes.Buffer
+func (b *Broadcaster) SetMetadataProvider(mp MetadataProvider) {
+	b.mu.Lock()
+	b.metadata = mp
+	b.mu.Unlock()
 }
 
+func (b *Broadcaster) currentTitle() string {
+	b.mu.Lock()
+	mp := b.metadata
+	b.mu.Unlock()
+	if mp == nil {
+		return ""
+	}
+	return mp.CurrentStreamTitle()
+}
+
+// ICY
 func newICYWriter(w http.ResponseWriter, getTitle func() string) *icyWriter {
 	return &icyWriter{w: w, getTitle: getTitle, bytesToMeta: icyMetaInt}
 }
