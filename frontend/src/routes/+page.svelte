@@ -6,8 +6,18 @@
 	import UploadSection from '$lib/components/UploadSection.svelte';
 	import QueueList from '$lib/components/QueueList.svelte';
 	import Listeners from '$lib/components/Listeners.svelte';
+	import { songTitle } from '$lib/utils';
 
 	const player = new PlayerState();
+
+	let currentTrack = $derived(player.data);
+	$effect(() => {
+		if (currentTrack && currentTrack.title && player.data) {
+			document.title = songTitle(player.data);
+		} else {
+			document.title = 'Femboy Radio';
+		}
+	});
 
 	onMount(() => {
 		player.init();

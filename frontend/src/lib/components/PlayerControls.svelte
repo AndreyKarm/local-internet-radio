@@ -11,14 +11,18 @@
 
 <div class="controls">
 	<form method="POST" action="?/shuffle" use:enhance>
-		<button type="submit"><Shuffle /></button>
+		<button type="submit" title="Shuffle">
+			<Shuffle />
+		</button>
 	</form>
 
 	<form method="POST" action="?/previous" use:enhance>
-		<button type="submit"><ArrowLeft /></button>
+		<button type="submit" title="Previous Song">
+			<ArrowLeft />
+		</button>
 	</form>
 
-	<button onclick={onTogglePlay} class="play">
+	<button onclick={onTogglePlay} class="play" title="Play">
 		{#if playing}
 			<Pause />
 		{:else}
@@ -27,17 +31,19 @@
 	</button>
 
 	<form method="POST" action="?/skip" use:enhance>
-		<button type="submit"><ArrowRight /></button>
+		<button type="submit" title="Skip">
+			<ArrowRight />
+		</button>
 	</form>
 
 	<form method="POST" action="?/loop" use:enhance>
-		<button type="submit"
-			>{#if looping}
+		<button type="submit" title="Loop">
+			{#if looping}
 				<Repeat1 />
 			{:else}
 				<Repeat />
-			{/if}</button
-		>
+			{/if}
+		</button>
 	</form>
 </div>
 
@@ -47,7 +53,7 @@
 		flex-direction: row;
 		align-items: center;
 		justify-content: center;
-		gap: 2rem;
+		gap: 1rem;
 	}
 
 	.play {

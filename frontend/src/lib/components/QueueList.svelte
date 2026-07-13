@@ -22,7 +22,7 @@
 	.queue-container {
 		position: absolute;
 		right: 0;
-		height: 100vh;
+		height: 99vh;
 		overflow-y: scroll;
 	}
 

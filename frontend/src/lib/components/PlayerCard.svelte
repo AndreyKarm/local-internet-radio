@@ -5,6 +5,7 @@
 	import PlayerControls from './PlayerControls.svelte';
 	import type { TSongData } from '$lib/types';
 	import { RADIO_URL } from '$lib';
+	import { songTitle } from '$lib/utils';
 
 	let {
 		data,
@@ -47,11 +48,8 @@
 	<CoverImage src={coverSrc} />
 
 	{#if data && data.title}
-		<h2>
-			{data.title.replace('.mp3', '')}
-			{#if !data.title.includes(data.artist) && data.artist != 'Unknown Artist'}
-				- {data.artist}
-			{/if}
+		<h2 title={songTitle(data)}>
+			{songTitle(data)}
 		</h2>
 
 		{#if data.duration}

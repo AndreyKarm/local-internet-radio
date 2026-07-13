@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { songTitle } from '$lib/utils';
 	import CoverImage from './CoverImage.svelte';
 	import type { TQueueSong } from '$lib/types';
 	import { RADIO_URL } from '$lib';
@@ -17,11 +18,8 @@
 	<button type="submit" class="queue-item-trigger">
 		<div class="queue-item" class:currently-playing={currently_playing}>
 			<CoverImage src={RADIO_URL + data.cover_url} class="queue-item-image" />
-			<p title={data.title.replace('.mp3', '')}>
-				{data.title.replace('.mp3', '')}
-				{#if !data.title.includes(data.artist) && data.artist != 'Unknown Artist'}
-					- {data.artist}
-				{/if}
+			<p title={songTitle(data)}>
+				{songTitle(data)}
 			</p>
 		</div>
 	</button>
