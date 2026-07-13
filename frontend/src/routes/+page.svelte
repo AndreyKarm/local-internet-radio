@@ -8,22 +8,11 @@
 
 	const player = new PlayerState();
 
-	function handleWheel(e: WheelEvent) {
-		const power = 0.01;
-		if (e.deltaY < 0) {
-			$settings.volume = Math.min(1, $settings.volume + power);
-		} else if (e.deltaY > 0) {
-			$settings.volume = Math.max(0, $settings.volume - power);
-		}
-	}
-
 	onMount(() => {
 		player.init();
 		return () => player.destroy();
 	});
 </script>
-
-<svelte:window onwheel={handleWheel} />
 
 <main class="container">
 	<PlayerCard

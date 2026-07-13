@@ -8,9 +8,19 @@
 		const target = e.currentTarget as HTMLInputElement;
 		onVolumeChange(parseFloat(target.value));
 	}
+
+	function handleWheel(e: WheelEvent) {
+		e.preventDefault();
+		const power = 0.01;
+		if (e.deltaY < 0) {
+			onVolumeChange(Math.min(1, volume + power));
+		} else if (e.deltaY > 0) {
+			onVolumeChange(Math.max(0, volume - power));
+		}
+	}
 </script>
 
-<div class="volume-control">
+<div class="volume-control" onwheel={handleWheel}>
 	{#if volume === 0}
 		<VolumeX />
 	{:else}
