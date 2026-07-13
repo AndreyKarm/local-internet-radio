@@ -178,17 +178,17 @@ func (e *Engine) playbackLoop(ctx context.Context, w io.Writer) {
 				e.trackMu.RUnlock()
 
 				if isLooping {
-					e.triggerSkip()
+					// e.triggerSkip()
 				} else if idx == len(tracks)-1 {
 					e.trackMu.Lock()
 					e.current.QueueIndex = 0
 					e.trackMu.Unlock()
-					e.triggerSkip()
+					// e.triggerSkip()
 				} else {
 					e.trackMu.Lock()
 					e.current.QueueIndex++
 					e.trackMu.Unlock()
-					e.triggerSkip()
+					// e.triggerSkip()
 				}
 			}
 		nextIteration:

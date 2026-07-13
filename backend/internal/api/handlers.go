@@ -107,6 +107,7 @@ func ShuffleHandler(engine *audio.Engine) http.HandlerFunc {
 			return
 		}
 
+		log.Println("Shuffle requested...")
 		engine.Shuffle()
 
 		w.WriteHeader(http.StatusOK)
@@ -142,6 +143,7 @@ func UploadHandler(store *storage.S3Store, refresher PlaylistRefresher) http.Han
 			http.Error(w, "Failed to upload to S3", http.StatusInternalServerError)
 			return
 		}
+		log.Println("Song successfuly uploaded")
 
 		if err := refresher.RefreshPlaylist(r.Context()); err != nil {
 			log.Printf("failed to refresh playlist after upload: %v", err)
@@ -161,6 +163,7 @@ func SkipHandler(engine *audio.Engine) http.HandlerFunc {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		log.Println("Song Skipped")
 		engine.Skip()
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"skipped"}`))
@@ -173,6 +176,7 @@ func PreviousHandler(engine *audio.Engine) http.HandlerFunc {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		log.Println("Song Previous")
 		engine.Previous()
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"returned"}`))
@@ -185,6 +189,7 @@ func LoopHandler(engine *audio.Engine) http.HandlerFunc {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		log.Println("Song Loop Toggle")
 		engine.ToggleLoop()
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"loop_toggled"}`))
@@ -211,6 +216,8 @@ func PlayByIndexHandler(engine *audio.Engine) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
+
+		log.Printf("Selected a song at index: %d", index)
 
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"playing"}`))

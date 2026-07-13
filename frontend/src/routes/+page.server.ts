@@ -2,7 +2,7 @@ import { fail } from '@sveltejs/kit';
 import type { Actions } from './$types';
 import { env } from '$env/dynamic/private';
 
-const RADIO_INTERNAL_URL = env.RADIO_INTERNAL_URL ?? 'http://localhost:8080';
+const RADIO_INTERNAL_URL = env.VITE_RADIO_URL ?? 'http://127.0.0.1:8080';
 
 export const actions = {
   upload: async ({ request, fetch }) => {

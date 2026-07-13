@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -17,6 +19,13 @@ import (
 
 	"github.com/rs/cors"
 )
+
+func logMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("Incoming request: %s %s at %s", r.Method, r.URL.Path, time.Now().Format(time.RFC3339Nano))
+		next.ServeHTTP(w, r)
+	})
+}
 
 func main() {
 	store, err := storage.NewS3Store()
@@ -59,19 +68,31 @@ func main() {
 	c := cors.New(cors.Options{
 		AllowedOrigins:   []string{"http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"},
 		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
-		AllowedHeaders:   []string{"*", "Accept", "Content-Type", "Range", "Icy-MetaData"},
+		AllowedHeaders:   []string{"Accept", "Content-Type", "Range", "Icy-MetaData"},
+		ExposedHeaders:   []string{"Content-Length"},
 		AllowCredentials: true,
+		MaxAge:           86400,
 	})
 
 	handlerWithCors := c.Handler(mux)
+	// handlerWithCors := c.Handler(logMiddleware(mux))
+
+	serverPort := int64(8080)
+	if p := os.Getenv("PORT"); p != "" {
+		if parsed, err := strconv.ParseInt(p, 10, 64); err == nil {
+			serverPort = parsed
+		} else {
+			log.Printf("invalid PORT %q, falling back to %d", p, serverPort)
+		}
+	}
 
 	server := &http.Server{
-		Addr:    ":8080",
+		Addr:    fmt.Sprintf("127.0.0.1:%d", serverPort),
 		Handler: handlerWithCors,
 	}
 
 	go func() {
-		log.Println("Radio Server listening on localhost:8080/stream")
+		log.Printf("Radio Server listening on 127.0.0.1:%d/stream", serverPort)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("HTTP server error: %v", err)
 		}
