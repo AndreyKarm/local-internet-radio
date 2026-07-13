@@ -12,7 +12,7 @@
 	{#if queue}
 		<div>
 			{#each queue as song, i (i)}
-				<QueueSong data={song} currently_playing={currentIndex === i} />
+				<QueueSong data={song} currently_playing={currentIndex === i} index={i} />
 			{/each}
 		</div>
 	{/if}

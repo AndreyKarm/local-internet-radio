@@ -65,7 +65,7 @@
 
 	<VolumeControl {volume} {onVolumeChange} />
 
-	<PlayerControls {playing} {onTogglePlay} />
+	<PlayerControls {playing} {onTogglePlay} looping={data?.loop ?? false} />
 </div>
 
 <style>

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"liotom/local-radio/internal/audio"
@@ -26,6 +27,10 @@ type NowPlayingProvider interface {
 
 type QueueProvider interface {
 	GetQueue() (queue []audio.TrackInfo, currentIndex int)
+}
+
+type PlaylistRefresher interface {
+	RefreshPlaylist(ctx context.Context) error
 }
 
 type CoverProvider interface {
@@ -109,7 +114,7 @@ func ShuffleHandler(engine *audio.Engine) http.HandlerFunc {
 	}
 }
 
-func UploadHandler(store *storage.S3Store) http.HandlerFunc {
+func UploadHandler(store *storage.S3Store, refresher PlaylistRefresher) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Restrict to POST methods
 		if r.Method != http.MethodPost {
@@ -138,11 +143,77 @@ func UploadHandler(store *storage.S3Store) http.HandlerFunc {
 			return
 		}
 
+		if err := refresher.RefreshPlaylist(r.Context()); err != nil {
+			log.Printf("failed to refresh playlist after upload: %v", err)
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
 			"status": "success",
 			"file":   header.Filename,
 		})
+	}
+}
+
+func SkipHandler(engine *audio.Engine) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		engine.Skip()
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"skipped"}`))
+	}
+}
+
+func PreviousHandler(engine *audio.Engine) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		engine.Previous()
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"returned"}`))
+	}
+}
+
+func LoopHandler(engine *audio.Engine) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		engine.ToggleLoop()
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"loop_toggled"}`))
+	}
+}
+
+func PlayByIndexHandler(engine *audio.Engine) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Get index from query param: /play?index=1
+		indexStr := r.URL.Query().Get("index")
+		index, err := strconv.Atoi(indexStr)
+		if err != nil {
+			http.Error(w, "Invalid index parameter", http.StatusBadRequest)
+			return
+		}
+
+		err = engine.PlayByIndex(index)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"playing"}`))
 	}
 }
 
@@ -196,6 +267,7 @@ func NowPlayingWSHandler(engine *audio.Engine) http.HandlerFunc {
 					"queue":       current.Queue,
 					"queue_index": current.QueueIndex,
 					"listeners":   engine.GetListenerCount(),
+					"loop":        current.Looping,
 				})
 				if err != nil {
 					log.Printf("client disconnected from now-playing ws: %v", err)

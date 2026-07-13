@@ -44,6 +44,6 @@
 	.progress-fill {
 		height: 100%;
 		background: var(--primary);
-		transition: width 1s linear;
+		transition: width 0.2s linear;
 	}
 </style>

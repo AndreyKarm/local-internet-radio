@@ -11,6 +11,7 @@ export type TSongData = {
   queue_index: number;
 
   listeners?: number;
+  loop?: boolean;
 };
 
 export type TQueueSong = {

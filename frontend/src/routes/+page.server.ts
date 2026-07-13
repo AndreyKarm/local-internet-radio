@@ -41,19 +41,12 @@ export const actions = {
 
   shuffle: async ({ fetch }) => {
     try {
-      const getRes = await fetch(`${RADIO_INTERNAL_URL}/queue/shuffle`, { method: 'GET' });
-      if (!getRes.ok) return fail(getRes.status, { message: 'Failed to get shuffle state' });
-
-      const { enabled } = await getRes.json();
-
-      const postRes = await fetch(`${RADIO_INTERNAL_URL}/queue/shuffle`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: !enabled })
+      const res = await fetch(`${RADIO_INTERNAL_URL}/shuffle`, {
+        method: 'POST'
       });
 
-      if (!postRes.ok) {
-        return fail(postRes.status, { message: 'Failed to toggle shuffle' });
+      if (!res.ok) {
+        return fail(res.status, { message: 'Failed to shuffle' });
       }
       return { success: true };
     } catch (err) {
@@ -62,9 +55,41 @@ export const actions = {
     }
   },
 
+  loop: async ({ fetch }) => {
+    try {
+      const res = await fetch(`${RADIO_INTERNAL_URL}/loop`, {
+        method: 'POST'
+      });
+
+      if (!res.ok) {
+        return fail(res.status, { message: 'Failed to loop' });
+      }
+      return { success: true };
+    } catch (err) {
+      console.error('Loop failed:', err);
+      return fail(500, { message: 'Internal server error loop.' });
+    }
+  },
+
+  previous: async ({ fetch }) => {
+    try {
+      const res = await fetch(`${RADIO_INTERNAL_URL}/previous`, {
+        method: 'POST'
+      });
+
+      if (!res.ok) {
+        return fail(res.status, { message: 'Failed to come back to previous track' });
+      }
+      return { success: true };
+    } catch (err) {
+      console.error('Previous selection failed:', err);
+      return fail(500, { message: 'Internal server error while coming back to previous.' });
+    }
+  },
+
   skip: async ({ fetch }) => {
     try {
-      const res = await fetch(`${RADIO_INTERNAL_URL}/queue/skip`, {
+      const res = await fetch(`${RADIO_INTERNAL_URL}/skip`, {
         method: 'POST'
       });
 
@@ -76,5 +101,30 @@ export const actions = {
       console.error('Skip failed:', err);
       return fail(500, { message: 'Internal server error while skipping.' });
     }
-  }
+  },
+
+  play: async ({ request, fetch }) => {
+    const data = await request.formData();
+    const index = data.get('index');
+
+    if (index === null) {
+      return fail(400, { message: 'Index is required' });
+    }
+
+    try {
+      const res = await fetch(`${RADIO_INTERNAL_URL}/play?index=${index}`, {
+        method: 'POST'
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        return fail(res.status, { message: `Backend error: ${errorText}` });
+      }
+
+      return { success: true };
+    } catch (err) {
+      console.error('Play failed:', err);
+      return fail(500, { message: 'Internal server error while playing.' });
+    }
+  },
 } satisfies Actions;

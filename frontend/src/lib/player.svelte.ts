@@ -77,9 +77,9 @@ export class PlayerState {
       try {
         const response = JSON.parse(event.data);
 
-        const isSongChange = response.title !== undefined || response.track !== undefined;
+        const isFullUpdate = response.title !== undefined || response.track !== undefined;
 
-        if (isSongChange) {
+        if (isFullUpdate) {
           if (this.data?.title !== response.title) {
             this.timestamp = Date.now();
           }

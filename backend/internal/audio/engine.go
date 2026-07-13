@@ -48,6 +48,7 @@ type NowPlaying struct {
 	StartedAt  int64
 	Queue      []TrackInfo
 	QueueIndex int
+	Looping    bool
 }
 
 type pacer struct {
@@ -66,14 +67,23 @@ type Engine struct {
 
 	playlistMu     sync.Mutex
 	activePlaylist []TrackInfo
+	loopMode       bool
 
 	listMu    sync.Mutex
 	listeners []chan NowPlaying
+
+	skipSignal     chan struct{}
+	cancelTrack    context.CancelFunc
+	trackMuControl sync.Mutex
 }
 
 // Engine
 func NewEngine(s *storage.S3Store, b *broadcaster.Broadcaster) *Engine {
-	return &Engine{store: s, broadcaster: b}
+	return &Engine{
+		store:       s,
+		broadcaster: b,
+		skipSignal:  make(chan struct{}, 1),
+	}
 }
 
 func (e *Engine) Run(ctx context.Context) {
@@ -116,7 +126,6 @@ func (e *Engine) playbackLoop(ctx context.Context, w io.Writer) {
 			return
 		}
 
-		// 2. Get the tracks to play from our protected activePlaylist
 		e.playlistMu.Lock()
 		tracks := make([]TrackInfo, len(e.activePlaylist))
 		copy(tracks, e.activePlaylist)
@@ -131,13 +140,106 @@ func (e *Engine) playbackLoop(ctx context.Context, w io.Writer) {
 			}
 		}
 
-		for i, info := range tracks {
-			if ctx.Err() != nil {
-				return
+		for {
+			e.trackMu.RLock()
+			idx := e.current.QueueIndex
+			looping := e.loopMode
+			e.trackMu.RUnlock()
+
+			if idx < 0 {
+				idx = 0
 			}
-			e.playTrack(ctx, w, pace, info, i, tracks)
+			if idx >= len(tracks) {
+				idx = 0
+			}
+
+			currentTrack := tracks[idx]
+
+			trackCtx, cancel := context.WithCancel(ctx)
+			e.trackMuControl.Lock()
+			e.cancelTrack = cancel
+			e.trackMuControl.Unlock()
+
+			err := e.playTrack(trackCtx, w, pace, currentTrack, idx, tracks)
+
+			cancel()
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-e.skipSignal:
+				goto nextIteration
+			default:
+				if err != nil && err != io.EOF && trackCtx.Err() == nil {
+					log.Printf("stream error: %v\n", err)
+				}
+
+				if looping && idx == len(tracks)-1 {
+					e.trackMu.Lock()
+					e.current.QueueIndex = idx
+					e.trackMu.Unlock()
+					e.triggerSkip()
+				} else if idx == len(tracks)-1 {
+					e.trackMu.Lock()
+					e.current.QueueIndex = 0
+					e.trackMu.Unlock()
+					e.triggerSkip()
+				} else {
+					e.trackMu.Lock()
+					e.current.QueueIndex++
+					e.trackMu.Unlock()
+					e.triggerSkip()
+				}
+			}
+		nextIteration:
 		}
 	}
+}
+
+func (e *Engine) triggerSkip() {
+	select {
+	case e.skipSignal <- struct{}{}:
+	default:
+	}
+}
+
+func (e *Engine) Skip() {
+	e.trackMu.Lock()
+	if e.current.QueueIndex < len(e.current.Queue)-1 {
+		e.current.QueueIndex++
+	} else {
+		e.current.QueueIndex = 0
+	}
+	e.trackMu.Unlock()
+	e.interruptCurrentTrack()
+}
+
+func (e *Engine) Previous() {
+	e.trackMu.Lock()
+	if e.current.QueueIndex > 0 {
+		e.current.QueueIndex--
+	} else {
+		e.current.QueueIndex = len(e.current.Queue) - 1
+	}
+	e.trackMu.Unlock()
+	e.interruptCurrentTrack()
+}
+
+func (e *Engine) ToggleLoop() {
+	e.trackMu.Lock()
+	e.loopMode = !e.loopMode
+	e.current.Looping = e.loopMode
+	e.trackMu.Unlock()
+	e.broadcastNowPlaying(e.GetNowPlaying())
+}
+
+func (e *Engine) interruptCurrentTrack() {
+	e.trackMuControl.Lock()
+	if e.cancelTrack != nil {
+		e.cancelTrack()
+	}
+	e.trackMuControl.Unlock()
+	e.triggerSkip()
 }
 
 func (e *Engine) refreshPlaylist(ctx context.Context) error {
@@ -174,12 +276,10 @@ func (e *Engine) Shuffle() {
 		return
 	}
 
-	// 1. Identify the currently playing song key
 	e.trackMu.RLock()
 	currentKey := e.current.Key
 	e.trackMu.RUnlock()
 
-	// 2. Separate the current song from the rest
 	var others []TrackInfo
 	var currentTrackInfo *TrackInfo
 
@@ -197,12 +297,9 @@ func (e *Engine) Shuffle() {
 			e.activePlaylist[i], e.activePlaylist[j] = e.activePlaylist[j], e.activePlaylist[i]
 		})
 	} else {
-		// 3. Shuffle the "others" slice
 		rand.Shuffle(len(others), func(i, j int) {
 			others[i], others[j] = others[j], others[i]
 		})
-
-		// 4. Rebuild the playlist: [Current Song] + [Shuffled Others]
 		newPlaylist := make([]TrackInfo, 0, len(e.activePlaylist))
 		newPlaylist = append(newPlaylist, *currentTrackInfo)
 		newPlaylist = append(newPlaylist, others...)
@@ -210,10 +307,8 @@ func (e *Engine) Shuffle() {
 	}
 
 	e.trackMu.Lock()
-
 	newQueue := make([]TrackInfo, len(e.activePlaylist))
 	copy(newQueue, e.activePlaylist)
-
 	e.current.Queue = newQueue
 	e.current.QueueIndex = 0
 	updatedCurrent := e.current
@@ -243,18 +338,16 @@ func (e *Engine) getTrackInfo(ctx context.Context, key string) TrackInfo {
 	}
 }
 
-func (e *Engine) playTrack(ctx context.Context, w io.Writer, pace *pacer, info TrackInfo, index int, queue []TrackInfo) {
+func (e *Engine) playTrack(ctx context.Context, w io.Writer, pace *pacer, info TrackInfo, index int, queue []TrackInfo) error {
 	obj, err := e.store.GetObject(ctx, info.Key)
 	if err != nil {
-		log.Println("failed to open object:", info.Key, err)
-		return
+		return err
 	}
 	defer obj.Close()
 
 	track, data, err := metadata.Parse(obj, info.Key)
 	if err != nil {
-		log.Printf("failed to parse %s: %v\n", info.Key, err)
-		return
+		return err
 	}
 
 	duration := probeDuration(ctx, data)
@@ -264,14 +357,11 @@ func (e *Engine) playTrack(ctx context.Context, w io.Writer, pace *pacer, info T
 
 	decoded, cleanup, err := decodeMP3(ctx, data)
 	if err != nil {
-		log.Printf("failed to start decoder for %s: %v\n", info.Key, err)
-		return
+		return err
 	}
 	defer cleanup()
 
-	if err := pace.copy(ctx, w, decoded); err != nil && ctx.Err() == nil {
-		log.Printf("stream error for %s: %v\n", info.Key, err)
-	}
+	return pace.copy(ctx, w, decoded)
 }
 
 func (e *Engine) setNowPlayingFromInfo(key string, t *metadata.Track, duration int, queue []TrackInfo, index int) {
@@ -285,6 +375,7 @@ func (e *Engine) setNowPlayingFromInfo(key string, t *metadata.Track, duration i
 		StartedAt:  time.Now().UnixMilli(),
 		Queue:      queue,
 		QueueIndex: index,
+		Looping:    e.loopMode,
 	}
 	e.cover = t.CoverData
 	e.coverMIME = t.CoverMIME
@@ -356,13 +447,10 @@ func (e *Engine) broadcastNowPlaying(np NowPlaying) {
 
 func (e *Engine) Subscribe() chan NowPlaying {
 	ch := make(chan NowPlaying, 1)
-
 	e.listMu.Lock()
 	e.listeners = append(e.listeners, ch)
 	e.listMu.Unlock()
-
 	ch <- e.GetNowPlaying()
-
 	return ch
 }
 
@@ -415,13 +503,35 @@ func (e *Engine) GetListenerCount() int {
 	return len(e.listeners)
 }
 
+func (e *Engine) RefreshPlaylist(ctx context.Context) error {
+	return e.refreshPlaylist(ctx)
+}
+
+func (e *Engine) PlayByIndex(index int) error {
+	e.trackMu.Lock()
+	defer e.trackMu.Unlock()
+
+	if index < 0 || index >= len(e.current.Queue) {
+		return fmt.Errorf("index %d out of bounds", index)
+	}
+
+	e.current.QueueIndex = index
+
+	go e.interruptCurrentTrack()
+
+	return nil
+}
+
 // Pacer
 func (p *pacer) copy(ctx context.Context, dst io.Writer, src io.Reader) error {
 	buf := make([]byte, pcmChunkSize)
 	for {
-		if ctx.Err() != nil {
+		select {
+		case <-ctx.Done():
 			return ctx.Err()
+		default:
 		}
+
 		n, err := src.Read(buf)
 		if n > 0 {
 			if _, writeErr := dst.Write(buf[:n]); writeErr != nil {

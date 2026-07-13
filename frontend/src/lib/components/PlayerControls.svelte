@@ -1,8 +1,12 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { ArrowLeft, ArrowRight, Pause, Play, Repeat, Shuffle } from '@lucide/svelte';
+	import { ArrowLeft, ArrowRight, Pause, Play, Repeat, Repeat1, Shuffle } from '@lucide/svelte';
 
-	let { playing, onTogglePlay }: { playing: boolean; onTogglePlay: () => void } = $props();
+	let {
+		playing,
+		onTogglePlay,
+		looping = false
+	}: { playing: boolean; onTogglePlay: () => void; looping?: boolean } = $props();
 </script>
 
 <div class="controls">
@@ -10,7 +14,7 @@
 		<button type="submit"><Shuffle /></button>
 	</form>
 
-	<form method="POST" action="?/return" use:enhance>
+	<form method="POST" action="?/previous" use:enhance>
 		<button type="submit"><ArrowLeft /></button>
 	</form>
 
@@ -26,8 +30,14 @@
 		<button type="submit"><ArrowRight /></button>
 	</form>
 
-	<form method="POST" action="?/shuffle" use:enhance>
-		<button type="submit"><Repeat /></button>
+	<form method="POST" action="?/loop" use:enhance>
+		<button type="submit"
+			>{#if looping}
+				<Repeat1 />
+			{:else}
+				<Repeat />
+			{/if}</button
+		>
 	</form>
 </div>
 
