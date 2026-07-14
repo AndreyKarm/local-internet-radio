@@ -12,7 +12,7 @@ export default defineConfig({
 			},
 			adapter: adapter(),
 			csrf: {
-				checkOrigin: false
+				trustedOrigins: ["*"]
 			}
 		})
 	]

@@ -108,7 +108,12 @@ export class PlayerState {
 
   public async refreshQueue() {
     try {
-      const res = await fetch(`${RADIO_URL}/queue`);
+      const res = await fetch(`/api/queue`);
+
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+
       const data = await res.json();
       this.queue = data.queue;
     } catch (err) {
