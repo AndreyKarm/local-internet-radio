@@ -22,7 +22,7 @@ import (
 
 func logMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("Incoming request: %s %s at %s", r.Method, r.URL.Path, time.Now().Format(time.RFC3339Nano))
+		log.Printf("Request: %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
 		next.ServeHTTP(w, r)
 	})
 }
@@ -36,6 +36,7 @@ func main() {
 	bc := broadcaster.New()
 	engine := audio.NewEngine(store, bc)
 	bc.SetMetadataProvider(engine)
+	bc.SetOnListenerChange(engine.NotifyListenerChange)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -77,8 +78,8 @@ func main() {
 		MaxAge:           86400,
 	})
 
-	handlerWithCors := c.Handler(mux)
-	// handlerWithCors := c.Handler(logMiddleware(mux))
+	// handlerWithCors := c.Handler(mux)
+	handlerWithCors := c.Handler(logMiddleware(mux))
 
 	// Get the server port from the environment variable PORT, or default to 8080
 	serverPort := int64(8080)

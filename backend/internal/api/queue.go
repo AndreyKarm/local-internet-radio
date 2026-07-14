@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"liotom/local-radio/internal/audio"
-	"log"
 	"net/http"
 )
 
@@ -36,7 +35,6 @@ func ShuffleHandler(engine *audio.Engine) http.HandlerFunc {
 			return
 		}
 
-		log.Println("Shuffle requested...")
 		engine.Shuffle()
 
 		w.WriteHeader(http.StatusOK)

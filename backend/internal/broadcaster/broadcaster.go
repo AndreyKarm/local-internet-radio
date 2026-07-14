@@ -10,6 +10,7 @@ type Broadcaster struct {
 	mu       sync.Mutex
 	clients  map[chan []byte]struct{}
 	metadata MetadataProvider
+	onChange func()
 }
 
 type MetadataProvider interface {
@@ -29,6 +30,7 @@ func (b *Broadcaster) Subscribe() chan []byte {
 	b.clients[ch] = struct{}{}
 	b.mu.Unlock()
 
+	b.notifyChange()
 	return ch
 }
 
@@ -37,6 +39,8 @@ func (b *Broadcaster) Unsubscribe(ch chan []byte) {
 	// Remove the channel from the clients map
 	delete(b.clients, ch)
 	b.mu.Unlock()
+
+	b.notifyChange()
 }
 
 func (b *Broadcaster) Publish(chunk []byte) {
@@ -126,4 +130,25 @@ func (b *Broadcaster) currentTitle() string {
 	}
 	// Return the current stream title
 	return mp.CurrentStreamTitle()
+}
+
+func (b *Broadcaster) ListenerCount() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.clients)
+}
+
+func (b *Broadcaster) SetOnListenerChange(fn func()) {
+	b.mu.Lock()
+	b.onChange = fn
+	b.mu.Unlock()
+}
+
+func (b *Broadcaster) notifyChange() {
+	b.mu.Lock()
+	fn := b.onChange
+	b.mu.Unlock()
+	if fn != nil {
+		fn()
+	}
 }

@@ -29,13 +29,13 @@ export const actions = {
       return fail(400, { message: 'Must be an audio file' });
     }
 
-    const backendFormData = new FormData();
-    backendFormData.append('track', file);
+    const formData = new FormData();
+    formData.append('track', file);
 
     try {
       const res = await fetch(`${RADIO_URL}/upload`, {
         method: 'POST',
-        body: backendFormData
+        body: formData
       });
 
       if (!res.ok) {

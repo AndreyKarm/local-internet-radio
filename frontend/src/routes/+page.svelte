@@ -54,30 +54,37 @@
 			: placeholderImage
 	);
 
+	// Audio element
 	let audioEl: HTMLAudioElement;
 
+	// Update the audio element when the player changes
 	$effect(() => {
 		if (audioEl) player.setAudioElement(audioEl);
 	});
 
+	// Update the volume when the settings change
 	$effect(() => {
 		if (audioEl) audioEl.volume = $settings.volume;
 	});
 
+	// Initialize the player
 	onMount(() => {
 		player.init();
 		return () => player.destroy();
 	});
 
+	// Handle volume changes
 	function onVolumeChange(v: number) {
 		settings.update((s) => ({ ...s, volume: v }));
 	}
 
+	// Handle input events on the volume slider
 	function handleInput(e: Event) {
 		const target = e.currentTarget as HTMLInputElement;
 		onVolumeChange(parseFloat(target.value));
 	}
 
+	// Handle wheel events on the volume slider
 	function handleWheel(e: WheelEvent) {
 		e.preventDefault();
 		const power = 0.0005;
@@ -251,37 +258,35 @@
 
 	<div class="queue-container">
 		{#if player.queue}
-			<div>
-				{#each player.queue as song, i (i)}
-					<div class="queue-item-wrapper" use:scrollIntoViewIfCurrent={currentIndex === i}>
-						<form method="POST" action="?/play" use:enhance class="play-form">
-							<input type="hidden" name="index" value={i} />
+			{#each player.queue as song, i (i)}
+				<div class="queue-item-wrapper" use:scrollIntoViewIfCurrent={currentIndex === i}>
+					<form method="POST" action="?/play" use:enhance class="play-form">
+						<input type="hidden" name="index" value={i} />
 
-							<button type="submit" class="queue-item-trigger">
-								<div class="queue-item" class:currently-playing={currentIndex === i}>
-									<CoverImage src={RADIO_URL + song.cover_url} class="queue-item-image" />
-									<p title={songTitle(song)}>
-										{songTitle(song)}
-									</p>
-								</div>
-							</button>
-						</form>
+						<button type="submit" class="queue-item-trigger">
+							<div class="queue-item" class:currently-playing={currentIndex === i}>
+								<CoverImage src={RADIO_URL + song.cover_url} class="queue-item-image" />
+								<p title={songTitle(song)}>
+									{songTitle(song)}
+								</p>
+							</div>
+						</button>
+					</form>
 
-						<form
-							method="POST"
-							action="?/delete"
-							use:enhance
-							class="delete-form"
-							onsubmit={confirmDelete}
-						>
-							<input type="hidden" name="key" value={song.key} />
-							<button type="submit" class="delete-button" aria-label={`Delete ${songTitle(song)}`}>
-								<Trash />
-							</button>
-						</form>
-					</div>
-				{/each}
-			</div>
+					<form
+						method="POST"
+						action="?/delete"
+						use:enhance
+						class="delete-form"
+						onsubmit={confirmDelete}
+					>
+						<input type="hidden" name="key" value={song.key} />
+						<button type="submit" class="delete-button" aria-label={`Delete ${songTitle(song)}`}>
+							<Trash />
+						</button>
+					</form>
+				</div>
+			{/each}
 		{/if}
 	</div>
 </main>
@@ -411,9 +416,6 @@
 		right: 0;
 		height: 99vh;
 		overflow-y: scroll;
-	}
-
-	.queue-container div {
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
@@ -422,8 +424,7 @@
 	/* Queue Item */
 	.queue-item-wrapper {
 		display: flex;
-		flex-direction: row !important;
-		gap: 0 !important;
+		flex-direction: row;
 	}
 
 	.play-form {
@@ -432,24 +433,20 @@
 
 	.queue-item-trigger {
 		background: none;
-		border: none;
 		padding: 0;
-		margin: 0;
-		font: inherit;
-		cursor: pointer;
 		width: 100%;
 		text-align: left;
 	}
 
 	.queue-item {
 		display: flex;
-		flex-direction: row !important;
+		flex-direction: row;
 		background: var(--secondary);
 		padding: 1rem;
 		gap: 1rem;
 		width: 20rem;
 		border-radius: 0.5rem 0 0 0.5rem;
-		transition: background-color 0.2s ease;
+		transition: all 0.2s ease;
 	}
 
 	.queue-item p {

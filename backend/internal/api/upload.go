@@ -68,8 +68,6 @@ func DeleteHandler(store *storage.S3Store, engine *audio.Engine) http.HandlerFun
 			return
 		}
 
-		log.Printf("Delete requested for key: %q", key)
-
 		if err := store.DeleteTrack(r.Context(), key); err != nil {
 			http.Error(w, "Failed to delete track: "+err.Error(), http.StatusInternalServerError)
 			return

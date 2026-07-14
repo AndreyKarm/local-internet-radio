@@ -120,10 +120,7 @@ func (e *Engine) GetNowPlayingCover() ([]byte, string) {
 }
 
 func (e *Engine) GetListenerCount() int {
-	e.listMu.Lock()
-	defer e.listMu.Unlock()
-	// Return the number of listeners
-	return len(e.listeners)
+	return e.broadcaster.ListenerCount()
 }
 
 func (e *Engine) GetCoverByKey(ctx context.Context, key string) ([]byte, string, error) {

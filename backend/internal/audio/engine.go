@@ -204,3 +204,7 @@ func (e *Engine) playbackLoop(ctx context.Context, w io.Writer) {
 		}
 	}
 }
+
+func (e *Engine) NotifyListenerChange() {
+	e.broadcastNowPlaying(e.GetNowPlaying())
+}
