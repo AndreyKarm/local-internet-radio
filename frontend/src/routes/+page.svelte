@@ -414,7 +414,7 @@
 	.queue-container {
 		position: absolute;
 		right: 0;
-		height: 99vh;
+		height: 100vh;
 		overflow-y: scroll;
 		display: flex;
 		flex-direction: column;

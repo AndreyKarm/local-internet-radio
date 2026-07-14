@@ -20,6 +20,23 @@ export class PlayerState {
   setAudioElement(el: HTMLAudioElement) {
     this.audio = el;
 
+
+    this.audio.addEventListener('play', () => {
+      this.updateMediaSessionPlaybackState();
+      // Force a metadata refresh when playing starts
+      this.updateMediaSessionMetadata();
+    });
+
+    this.audio.addEventListener('pause', () => {
+      this.updateMediaSessionPlaybackState();
+    });
+
+    this.audio.addEventListener('loadedmetadata', () => {
+      // Ensure metadata is synced as soon as the stream is recognized
+      this.updateMediaSessionMetadata();
+    });
+
+
     if (get(settings).playing) {
       this.playStream();
     }
@@ -28,6 +45,7 @@ export class PlayerState {
   init() {
     this.connectWebSocket();
     this.startTimer();
+    this.setupMediaSession();
   }
 
   destroy() {
@@ -39,7 +57,76 @@ export class PlayerState {
     }
   }
 
-  togglePlay() {
+  private setupMediaSession() {
+    if (!('mediaSession' in navigator)) return;
+
+    navigator.mediaSession.setActionHandler('play', () => {
+      this.togglePlay();
+    });
+
+    navigator.mediaSession.setActionHandler('pause', () => {
+      this.togglePlay();
+    });
+
+    navigator.mediaSession.setActionHandler('previoustrack', () => {
+      this.previous();
+    });
+
+    navigator.mediaSession.setActionHandler('nexttrack', () => {
+      this.skip();
+    });
+  }
+
+  private updateMediaSessionMetadata() {
+    if (!('mediaSession' in navigator) || !this.data) return;
+
+    const metadata = new MediaMetadata({
+      title: this.data.title,
+      artist: this.data.artist,
+      album: this.data.album,
+      artwork: this.data.cover
+        ? [
+          {
+            src: `${RADIO_URL}${this.data.cover}?t=${this.timestamp}`,
+            type: 'image/png'
+          }
+        ]
+        : []
+    });
+
+    navigator.mediaSession.metadata = metadata;
+  }
+
+  private updateMediaSessionPlaybackState() {
+    if (!('mediaSession' in navigator)) return;
+    navigator.mediaSession.playbackState = get(settings).playing
+      ? 'playing'
+      : 'paused';
+  }
+
+  private updateMediaSessionPosition() {
+    if (!('mediaSession' in navigator) || !this.data?.duration) return;
+
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: this.data.duration,
+        playbackRate: 1,
+        position: Math.min(this.elapsed, this.data.duration)
+      });
+    } catch (e) {
+      console.error('Failed to update media session position:', e);
+    }
+  }
+
+  private previous() {
+    fetch(`${RADIO_URL}/previous`, { method: 'POST' }).catch(console.error);
+  }
+
+  private skip() {
+    fetch(`${RADIO_URL}/skip`, { method: 'POST' }).catch(console.error);
+  }
+
+  public togglePlay() {
     if (!this.audio) return;
     const current = get(settings);
 
@@ -60,6 +147,8 @@ export class PlayerState {
       }
       settings.update((s) => ({ ...s, playing: true }));
     }
+
+    this.updateMediaSessionPlaybackState();
   }
 
   private playStream() {
@@ -90,7 +179,8 @@ export class PlayerState {
         const response = JSON.parse(event.data);
 
         if (response.track !== undefined || response.title !== undefined) {
-          if (this.data?.title !== response.title) {
+          const titleChanged = this.data?.title !== response.title;
+          if (titleChanged) {
             this.timestamp = Date.now();
           }
           this.data = {
@@ -101,6 +191,11 @@ export class PlayerState {
           if (response.queue) {
             this.queue = response.queue;
           }
+
+          if (titleChanged) {
+            this.updateMediaSessionMetadata();
+          }
+          this.updateMediaSessionPosition();
         }
 
       } catch (e) {
@@ -137,6 +232,8 @@ export class PlayerState {
 
         this.elapsed = currentElapsed;
         this.remaining = this.data.duration - this.elapsed;
+
+        this.updateMediaSessionPosition();
       } else {
         this.elapsed = 0;
         this.remaining = 0;
