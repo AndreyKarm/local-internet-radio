@@ -41,7 +41,9 @@ func main() {
 
 	var wg sync.WaitGroup
 
+	// Create a new signal channel
 	sigChan := make(chan os.Signal, 1)
+	// Register the signal channel with the OS
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	wg.Go(func() {
@@ -78,6 +80,7 @@ func main() {
 	handlerWithCors := c.Handler(mux)
 	// handlerWithCors := c.Handler(logMiddleware(mux))
 
+	// Get the server port from the environment variable PORT, or default to 8080
 	serverPort := int64(8080)
 	if p := os.Getenv("PORT"); p != "" {
 		if parsed, err := strconv.ParseInt(p, 10, 64); err == nil {
@@ -99,19 +102,26 @@ func main() {
 		}
 	}()
 
+	// Wait for a signal
 	sig := <-sigChan
+	// Log the received signal
 	log.Printf("Received signal %v, shutting down gracefully...\n", sig)
 
+	// Cancel the context
 	cancel()
 
+	// Create a shutdown context and cancel function
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
+	// Shutdown the server
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Printf("HTTP server Shutdown error: %v", err)
 	}
 
+	// Log that the engine is stopping
 	log.Println("Waiting for engine to stop...")
 	wg.Wait()
 
+	// Log that the server is stopping
 	log.Println("Server stopping...")
 }

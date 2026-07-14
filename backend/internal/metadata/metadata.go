@@ -16,11 +16,11 @@ type Track struct {
 	CoverMIME string
 }
 
-func (t *Track) StreamTitle() string {
-	if t.Artist != "" && t.Artist != "Unknown Artist" {
-		return fmt.Sprintf("%s - %s", t.Artist, t.Title)
+func (track *Track) StreamTitle() string {
+	if track.Artist != "" && track.Artist != "Unknown Artist" {
+		return fmt.Sprintf("%s - %s", track.Artist, track.Title)
 	}
-	return t.Title
+	return track.Title
 }
 
 func Parse(r io.Reader, fallbackTitle string) (*Track, []byte, error) {
@@ -29,21 +29,21 @@ func Parse(r io.Reader, fallbackTitle string) (*Track, []byte, error) {
 		return nil, nil, err
 	}
 
-	t := &Track{Title: fallbackTitle, Artist: "Unknown Artist"}
+	track := &Track{Title: fallbackTitle, Artist: "Unknown Artist"}
 
-	if m, err := tag.ReadFrom(bytes.NewReader(data)); err == nil && m != nil {
-		if title := m.Title(); title != "" {
-			t.Title = title
+	if metadata, err := tag.ReadFrom(bytes.NewReader(data)); err == nil && metadata != nil {
+		if title := metadata.Title(); title != "" {
+			track.Title = title
 		}
-		if artist := m.Artist(); artist != "" {
-			t.Artist = artist
+		if artist := metadata.Artist(); artist != "" {
+			track.Artist = artist
 		}
-		t.Album = m.Album()
-		if pic := m.Picture(); pic != nil {
-			t.CoverData = pic.Data
-			t.CoverMIME = pic.MIMEType
+		track.Album = metadata.Album()
+		if pic := metadata.Picture(); pic != nil {
+			track.CoverData = pic.Data
+			track.CoverMIME = pic.MIMEType
 		}
 	}
 
-	return t, data, nil
+	return track, data, nil
 }

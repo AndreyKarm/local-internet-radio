@@ -87,7 +87,9 @@ export class PlayerState {
             ...response
           } as TSongData;
 
-          await this.refreshQueue();
+          if (response.queue) {
+            this.queue = response.queue;
+          }
         }
 
       } catch (e) {
@@ -106,23 +108,8 @@ export class PlayerState {
     };
   }
 
-  public async refreshQueue() {
-    try {
-      const res = await fetch(`/api/queue`);
-
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-      }
-
-      const data = await res.json();
-      this.queue = data.queue;
-    } catch (err) {
-      console.error('Failed to refresh queue:', err);
-    }
-  }
-
-  public async triggerManualRefresh() {
-    await this.refreshQueue();
+  setQueue(queue: TQueueSong[]) {
+    this.queue = queue;
   }
 
   private startTimer() {
