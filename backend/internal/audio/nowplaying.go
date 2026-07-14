@@ -50,12 +50,14 @@ func (e *Engine) Subscribe() chan NowPlaying {
 	e.listMu.Unlock()
 	// Send the current now playing to the channel
 	ch <- e.GetNowPlaying()
+
+	e.broadcastNowPlaying(e.GetNowPlaying())
+
 	return ch
 }
 
 func (e *Engine) Unsubscribe(ch chan NowPlaying) {
 	e.listMu.Lock()
-	defer e.listMu.Unlock()
 	// Iterate over the listeners
 	for i, c := range e.listeners {
 		// If the channel matches, remove it and close the channel
@@ -63,9 +65,12 @@ func (e *Engine) Unsubscribe(ch chan NowPlaying) {
 			// Remove the channel from the listeners list
 			e.listeners = append(e.listeners[:i], e.listeners[i+1:]...)
 			close(ch)
+			e.listMu.Unlock()
+			e.broadcastNowPlaying(e.GetNowPlaying())
 			return
 		}
 	}
+	e.listMu.Unlock()
 }
 
 func (e *Engine) GetNowPlaying() NowPlaying {
