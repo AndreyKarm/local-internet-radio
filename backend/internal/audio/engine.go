@@ -170,30 +170,31 @@ func (e *Engine) playbackLoop(ctx context.Context, w io.Writer) {
 				log.Printf("stream error: %v\n", err)
 			}
 
-			e.trackMu.Lock()
-			isLooping := e.loopMode
-			alreadyChanged := e.current.Key != currentTrack.Key
-			defer e.trackMu.Unlock()
+			func() {
+				e.trackMu.Lock()
+				defer e.trackMu.Unlock()
 
-			// If we are looping, keep playing
-			if alreadyChanged {
-				// something else (Skip/Previous/PlayByIndex) already moved us on
-			} else if isLooping {
-			} else if idx == len(tracks)-1 { // If we are at the end of the playlist
-				// Set the current index to 0
-				e.current.QueueIndex = 0
-				// If there are songs, set the current key to the first one
-				if len(tracks) > 0 {
-					e.current.Key = tracks[0].Key
+				isLooping := e.loopMode
+				alreadyChanged := e.current.Key != currentTrack.Key
+
+				if alreadyChanged {
+					return
 				}
-			} else { // If we are not at the end of the playlist
-				// Increment the current index
-				e.current.QueueIndex++
-				// If the index is out of bounds, set it to 0
-				if idx+1 < len(tracks) {
-					e.current.Key = tracks[idx+1].Key
+
+				if isLooping {
+					return
+				} else if idx == len(tracks)-1 {
+					e.current.QueueIndex = 0
+					if len(tracks) > 0 {
+						e.current.Key = tracks[0].Key
+					}
+				} else {
+					e.current.QueueIndex++
+					if idx+1 < len(tracks) {
+						e.current.Key = tracks[idx+1].Key
+					}
 				}
-			}
+			}()
 		}
 
 		// Refresh the playlist

@@ -235,7 +235,7 @@
 			<input
 				type="file"
 				name="track"
-				accept="audio/*"
+				accept="audio/mp3"
 				bind:this={fileInput}
 				onchange={() => formElement.requestSubmit()}
 				style="display: none;"

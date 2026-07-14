@@ -16,18 +16,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # postgres:
-  #   image: postgres:16-alpine
-  #   container_name: radio-postgres
-  #   environment:
-  #     POSTGRES_USER: radio
-  #     POSTGRES_PASSWORD: radiopass123
-  #     POSTGRES_DB: radio
-  #   ports:
-  #     - "5455:5432"
-  #   volumes:
-  #     - postgres_data:/var/lib/postgresql/data
-
   radio:
     build:
       context: ./backend
