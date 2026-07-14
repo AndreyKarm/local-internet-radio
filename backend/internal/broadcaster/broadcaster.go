@@ -28,6 +28,7 @@ func (b *Broadcaster) Subscribe() chan []byte {
 	// Add the channel to the clients map
 	b.clients[ch] = struct{}{}
 	b.mu.Unlock()
+
 	return ch
 }
 

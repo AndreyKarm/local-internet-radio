@@ -191,7 +191,7 @@
 				</button>
 			</form>
 
-			<button onclick={player.togglePlay} class="play" title="Play">
+			<button onclick={() => player.togglePlay()} class="play" title="Play">
 				{#if $settings.playing}
 					<Pause />
 				{:else}

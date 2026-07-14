@@ -9,6 +9,7 @@ import (
 
 func SkipHandler(engine *audio.Engine) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Check if the request method is POST
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -22,6 +23,7 @@ func SkipHandler(engine *audio.Engine) http.HandlerFunc {
 
 func PreviousHandler(engine *audio.Engine) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// 	Check if the request method is POST
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -35,6 +37,7 @@ func PreviousHandler(engine *audio.Engine) http.HandlerFunc {
 
 func LoopHandler(engine *audio.Engine) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Check if the request method is POST
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -48,6 +51,7 @@ func LoopHandler(engine *audio.Engine) http.HandlerFunc {
 
 func PlayByIndexHandler(engine *audio.Engine) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Check if the request method is POST
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return

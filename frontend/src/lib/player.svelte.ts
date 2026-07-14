@@ -15,6 +15,8 @@ export class PlayerState {
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private timer: ReturnType<typeof setInterval> | undefined;
 
+  private lastPauseTime: number = 0;
+
   setAudioElement(el: HTMLAudioElement) {
     this.audio = el;
 
@@ -43,19 +45,28 @@ export class PlayerState {
 
     if (current.playing) {
       this.audio.pause();
-      this.audio.removeAttribute('src');
-      this.audio.load();
+      this.lastPauseTime = Date.now();
       settings.update((s) => ({ ...s, playing: false }));
     } else {
-      this.playStream();
+      const pauseDuration = Date.now() - this.lastPauseTime;
+
+      if (this.audio.src && pauseDuration < 5000) {
+        this.audio.play().catch((err) => {
+          console.error('Playback failed:', err);
+          settings.update((s) => ({ ...s, playing: false }));
+        });
+      } else {
+        this.playStream();
+      }
       settings.update((s) => ({ ...s, playing: true }));
     }
   }
 
   private playStream() {
     if (!this.audio) return;
+
     this.audio.src = `${RADIO_URL}/stream?t=${Date.now()}`;
-    this.audio.load();
+
     this.audio.play().catch((err) => {
       console.error('Playback failed:', err);
       settings.update((s) => ({ ...s, playing: false }));
