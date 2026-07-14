@@ -24,6 +24,7 @@ type NowPlaying struct {
 	StartedAt  int64
 	QueueIndex int
 	Looping    bool
+	Queue      []TrackInfo
 }
 
 func (e *Engine) broadcastNowPlaying(np NowPlaying) {

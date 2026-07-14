@@ -105,8 +105,16 @@ func (e *Engine) syncQueueWithPlaylist(tracks []TrackInfo) {
 			break
 		}
 	}
-	// Set the new index
 	e.current.QueueIndex = newIndex
+
+	if newIndex != -1 {
+		e.current.QueueIndex = newIndex
+	} else if e.current.Key == "" && len(tracks) > 0 {
+		// nothing has played yet, default sensibly
+		e.current.QueueIndex = 0
+	}
+
+	e.current.Queue = tracks
 
 	// Set the key to the next song
 	e.broadcastNowPlaying(e.current)

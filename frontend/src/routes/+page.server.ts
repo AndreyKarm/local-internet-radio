@@ -4,7 +4,6 @@ import { env } from '$env/dynamic/private';
 
 const RADIO_URL = env.VITE_RADIO_URL ?? 'http://127.0.0.1:8080';
 
-
 export const load: PageServerLoad = async ({ fetch }) => {
   try {
     const res = await fetch(`${RADIO_URL}/queue`);

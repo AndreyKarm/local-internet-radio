@@ -36,7 +36,7 @@
 
 	// Current track data
 	let currentTrack = $derived(player.data);
-	let currentIndex = $derived(player.queue.findIndex((song) => song.title === currentTrack?.title));
+	let currentIndex = $derived(player.queue.findIndex((song) => song.key === currentTrack?.track));
 
 	// Change page title on song change
 	$effect(() => {
