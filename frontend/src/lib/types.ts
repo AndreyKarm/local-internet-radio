@@ -12,6 +12,8 @@ export type TSongData = {
 
   listeners?: number;
   loop?: boolean;
+
+  currentFilter?: string
 };
 
 export type TQueueSong = {

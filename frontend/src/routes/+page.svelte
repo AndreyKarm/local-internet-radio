@@ -22,12 +22,15 @@
 	import { RADIO_URL, RADIO_NAME } from '$lib';
 	import type { SubmitFunction } from '@sveltejs/kit';
 	import type { PageProps } from './$types';
+	import { AudioFilters } from '$lib/filter';
 
 	let { data }: PageProps = $props();
 
 	const player = new PlayerState();
 	const RadioName = RADIO_NAME;
 	const placeholderImage = '/boykisser.png';
+
+	let activeFilter = $derived(player.data?.currentFilter ?? '');
 
 	// Sync queue
 	$effect(() => {
@@ -221,6 +224,32 @@
 					{/if}
 				</button>
 			</form>
+		</div>
+	</div>
+
+	<div class="filters-section">
+		<h3>Radio Effects</h3>
+		<div class="filters">
+			{#each AudioFilters as f (f.name)}
+				<form
+					method="POST"
+					action="?/setFilter"
+					use:enhance={() => {
+						activeFilter = f.filter;
+						return async ({ result, update }) => {
+							if (result.type !== 'success') {
+								alert('Failed to change filter');
+							}
+							update();
+						};
+					}}
+				>
+					<input type="hidden" name="filter" value={f.filter} />
+					<button type="submit" class="filter-btn" class:active={activeFilter === f.filter}>
+						{f.name}
+					</button>
+				</form>
+			{/each}
 		</div>
 	</div>
 
@@ -490,6 +519,43 @@
 	.delete-button:hover {
 		background: var(--danger);
 		color: var(--text);
+	}
+
+	/* Filters */
+	.filters-section {
+		margin-top: 2rem;
+		width: 100%;
+		max-width: 35rem;
+		text-align: center;
+	}
+
+	.filters-section h3 {
+		margin-bottom: 0.75rem;
+		font-size: 1rem;
+		opacity: 0.8;
+	}
+
+	.filters {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 0.5rem;
+	}
+
+	.filter-btn {
+		background: var(--secondary);
+		color: var(--text);
+		font-size: 0.85rem;
+		padding: 0.6rem 1rem;
+		border-radius: 9999px;
+	}
+
+	.filter-btn:hover {
+		background: var(--accent);
+	}
+
+	.filter-btn.active {
+		background: var(--primary);
 	}
 
 	@media (max-width: 768px) {

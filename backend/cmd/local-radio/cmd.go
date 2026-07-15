@@ -65,6 +65,8 @@ func main() {
 	mux.HandleFunc("/skip", api.SkipHandler(engine))
 	mux.HandleFunc("/previous", api.PreviousHandler(engine))
 	mux.HandleFunc("/loop", api.LoopHandler(engine))
+	mux.HandleFunc("/filter", api.SetFilterHandler(engine))
+	mux.HandleFunc("/filter/get", api.GetFilterHandler(engine))
 
 	// Websockets
 	mux.HandleFunc("/ws/now-playing", api.NowPlayingWSHandler(engine))

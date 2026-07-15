@@ -90,6 +90,7 @@ func NowPlayingWSHandler(engine *audio.Engine) http.HandlerFunc {
 					"listeners":   engine.GetListenerCount(),
 					"loop":        current.Looping,
 					"queue":       current.Queue,
+					"filter":      engine.GetFilter(),
 				})
 				if err != nil {
 					log.Printf("client disconnected from now-playing ws: %v", err)

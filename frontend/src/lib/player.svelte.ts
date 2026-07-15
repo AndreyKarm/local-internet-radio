@@ -178,6 +178,8 @@ export class PlayerState {
       try {
         const response = JSON.parse(event.data);
 
+        console.log(response)
+
         if (response.track !== undefined || response.title !== undefined) {
           const titleChanged = this.data?.title !== response.title;
           if (titleChanged) {
@@ -196,6 +198,16 @@ export class PlayerState {
             this.updateMediaSessionMetadata();
           }
           this.updateMediaSessionPosition();
+        }
+
+        if (response.filter !== undefined) {
+
+          if (this.data) {
+            this.data = {
+              ...this.data,
+              currentFilter: response.filter
+            } as TSongData;
+          }
         }
 
       } catch (e) {

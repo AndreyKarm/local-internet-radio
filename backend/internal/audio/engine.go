@@ -2,11 +2,13 @@ package audio
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -48,72 +50,87 @@ type Engine struct {
 
 	infoCache   map[string]TrackInfo
 	infoCacheMu sync.Mutex
+
+	// Audio Filters
+	filterMu      sync.RWMutex
+	currentFilter string
+	filterSignal  chan struct{}
 }
 
 // Engine
 func NewEngine(s *storage.S3Store, b *broadcaster.Broadcaster) *Engine {
 	return &Engine{
-		store:       s,
-		broadcaster: b,
-		skipSignal:  make(chan struct{}, 1),
-		infoCache:   make(map[string]TrackInfo),
+		store:         s,
+		broadcaster:   b,
+		skipSignal:    make(chan struct{}, 1),
+		infoCache:     make(map[string]TrackInfo),
+		filterSignal:  make(chan struct{}, 1),
+		currentFilter: "anull", // Clean radio
 	}
 }
 
 func (e *Engine) Run(ctx context.Context) {
 	// Create a new ffmpeg process
-	// radioFilter := "highpass=f=400,lowpass=f=3500,volume=1.5"
 
-	// radioFilter := "[0:a]" +
-	// 	"highpass=f=500,lowpass=f=2800," +
-	// 	"acrusher=level_in=1:level_out=0.7:bits=6:mode=log:aa=1," +
-	// 	"vibrato=f=4:d=0.3," +
-	// 	"acompressor=threshold=0.1:ratio=9:attack=5:release=50" +
-	// 	"[voice];" +
-	// 	"anoisesrc=d=9999:amplitude=0.02:c=pink:r=44100,aformat=channel_layouts=stereo" +
-	// 	"[noise];" +
-	// 	"[voice][noise]amix=inputs=2:duration=first:weights=1 1" +
-	// 	"[mixed];" +
-	// 	"[mixed]tremolo=f=0.15:d=0.4" +
-	// 	"[aout]"
+	for {
+		// Check if context is done before starting a new session
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
 
-	// radioFilter := "[0:a]" +
-	// 	// Brutally narrow telephone-tin-can band
-	// 	"highpass=f=800,lowpass=f=2000," +
-	// 	// Heavy pre-gain to force clipping/distortion
-	// 	"volume=6dB," +
-	// 	// Aggressive bitcrush - near-destroyed resolution
-	// 	"acrusher=level_in=1.2:level_out=0.5:bits=4:mode=log:aa=0.5," +
-	// 	// Hard clipping distortion on top of the crush
-	// 	"alimiter=limit=0.6:attack=1:release=20," +
-	// 	// Wow & flutter - warped tape/bad tuner drift
-	// 	"vibrato=f=6:d=0.6," +
-	// 	// Slow deep tremolo - signal fading in/out like bad reception
-	// 	"tremolo=f=0.3:d=0.7," +
-	// 	// Crush dynamics into oblivion (cheap AM compander, cranked)
-	// 	"acompressor=threshold=0.05:ratio=20:attack=2:release=80:makeup=3" +
-	// 	"[voice];" +
-	// 	// Loud pink noise/hiss bed
-	// 	"anoisesrc=d=9999:amplitude=0.05:c=pink:r=44100,aformat=channel_layouts=stereo" +
-	// 	"[hiss];" +
-	// 	// Occasional white-noise crackle layer for extra grit
-	// 	"anoisesrc=d=9999:amplitude=0.03:c=white:r=44100,aformat=channel_layouts=stereo," +
-	// 	"highpass=f=3000" +
-	// 	"[crackle];" +
-	// 	// Mix voice + hiss + crackle together
-	// 	"[voice][hiss]amix=inputs=2:duration=first:weights=1 1[mix1];" +
-	// 	"[mix1][crackle]amix=inputs=2:duration=first:weights=1 0.6[mixed];" +
-	// 	// Random deep signal dropouts - simulates terrible reception
-	// 	"[mixed]tremolo=f=0.1:d=0.9" +
-	// 	"[aout]"
+		// Create a child context for this specific ffmpeg session
+		// This allows us to kill ONLY the ffmpeg process when the filter changes
+		sessionCtx, cancelSession := context.WithCancel(ctx)
 
-	// log.Println("FFMPEG FILTER:", radioFilter)
+		watchDone := make(chan struct{})
+		go func() {
+			defer close(watchDone)
+			select {
+			case <-sessionCtx.Done():
+				return
+			case <-e.filterSignal:
+				log.Println("Filter change detected. Restarting ffmpeg...")
+				cancelSession()
+			}
+		}()
+
+		// Start the encoder session
+		err := e.runEncoderSession(sessionCtx, cancelSession)
+		<-watchDone
+
+		if err != nil && err != context.Canceled {
+			log.Printf("Encoder session error: %v", err)
+		}
+
+		if ctx.Err() != nil {
+			return
+		}
+	}
+}
+
+func (e *Engine) runEncoderSession(ctx context.Context, cancelSession context.CancelFunc) error {
+	defer cancelSession()
+
+	e.filterMu.RLock()
+	filter := e.currentFilter
+	e.filterMu.RUnlock()
+
+	log.Printf("Starting ffmpeg with filter: %s", filter)
+
+	var complexFilter string
+	if strings.Contains(filter, "[aout]") {
+		complexFilter = fmt.Sprintf("[0:a]%s", filter)
+	} else {
+		complexFilter = fmt.Sprintf("[0:a]%s[aout]", filter)
+	}
 
 	encoder := exec.CommandContext(ctx, "ffmpeg",
 		"-hide_banner", "-loglevel", "error",
 		"-f", "s16le", "-ar", strconv.Itoa(sampleRate), "-ac", strconv.Itoa(channels),
 		"-i", "pipe:0",
-		// "-filter_complex", radioFilter,
+		"-filter_complex", complexFilter,
 		"-map", "[aout]",
 		"-f", "mp3",
 		"-b:a", "128k", "pipe:1",
@@ -122,29 +139,27 @@ func (e *Engine) Run(ctx context.Context) {
 
 	stdin, err := encoder.StdinPipe()
 	if err != nil {
-		log.Fatalln("ffmpeg stdin pipe error:", err)
+		return err
 	}
 	stdout, err := encoder.StdoutPipe()
 	if err != nil {
-		log.Fatalln("ffmpeg stdout pipe error:", err)
+		return err
 	}
 	if err := encoder.Start(); err != nil {
-		log.Fatalln("ffmpeg start error:", err)
+		return err
 	}
 
-	// Start the playback loop
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		defer stdin.Close()
 		e.playbackLoop(ctx, stdin)
 	})
 
-	// Publish encoded audio to the broadcaster
 	e.publishEncodedAudio(stdout)
 
-	// Wait for the process to finish
 	_ = encoder.Wait()
 	wg.Wait()
+	return nil
 }
 
 func (e *Engine) playbackLoop(ctx context.Context, w io.Writer) {
@@ -253,6 +268,26 @@ func (e *Engine) playbackLoop(ctx context.Context, w io.Writer) {
 			return
 		}
 	}
+}
+
+func (e *Engine) SetFilter(filterStr string) {
+	e.filterMu.Lock()
+	e.currentFilter = filterStr
+	e.filterMu.Unlock()
+
+	// Non-blocking send to signal the restart
+	select {
+	case e.filterSignal <- struct{}{}:
+	default:
+	}
+
+	e.broadcastNowPlaying(e.GetNowPlaying())
+}
+
+func (e *Engine) GetFilter() string {
+	e.filterMu.RLock()
+	defer e.filterMu.RUnlock()
+	return e.currentFilter
 }
 
 func (e *Engine) NotifyListenerChange() {

@@ -6,9 +6,18 @@ const RADIO_URL = env.VITE_RADIO_URL ?? 'http://127.0.0.1:8080';
 
 export const load: PageServerLoad = async ({ fetch }) => {
   try {
-    const res = await fetch(`${RADIO_URL}/queue`);
-    const data = res.ok ? await res.json() : { queue: [] };
-    return { queue: data.queue ?? [] };
+    const [queueRes, filterRes] = await Promise.all([
+      fetch(`${RADIO_URL}/queue`),
+      fetch(`${RADIO_URL}/filter/get`)
+    ]);
+
+    const queueData = queueRes.ok ? await queueRes.json() : { queue: [] };
+    const filterData = filterRes.ok ? await filterRes.json() : { filter: '' };
+
+    return {
+      queue: queueData.queue ?? [],
+      currentFilter: filterData.filter ?? ''
+    };
   } catch (err) {
     console.error('Failed to load queue:', err);
     return { queue: [] };
@@ -163,4 +172,31 @@ export const actions = {
       return fail(500, { message: 'Internal server error while deleting.' });
     }
   },
+
+  setFilter: async ({ request, fetch }) => {
+    const data = await request.formData();
+    const filter = data.get('filter');
+
+    if (!filter) {
+      return fail(400, { message: 'Filter is required' });
+    }
+
+    try {
+      const res = await fetch(`${RADIO_URL}/filter`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filter: filter.toString() })
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        return fail(res.status, { message: `Backend error: ${errorText}` });
+      }
+
+      return { success: true, filter: filter.toString() };
+    } catch (err) {
+      console.error('Set filter failed:', err);
+      return fail(500, { message: 'Internal server error while setting filter.' });
+    }
+  }
 } satisfies Actions;
