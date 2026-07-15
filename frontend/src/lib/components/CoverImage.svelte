@@ -16,8 +16,10 @@
 
 <style>
 	.cover {
-		width: 20rem;
-		height: 20rem;
+		width: 100%;
+		max-width: 20rem;
+		aspect-ratio: 1 / 1;
+		height: auto;
 		object-fit: cover;
 		border-radius: 0.5rem;
 	}

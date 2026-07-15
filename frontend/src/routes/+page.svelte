@@ -298,7 +298,8 @@
 		justify-content: center;
 		align-items: center;
 		flex-direction: column;
-		height: 100vh;
+		min-height: 100vh;
+		padding: 4rem 1rem;
 	}
 
 	/* Volume control */
@@ -313,7 +314,8 @@
 		-webkit-appearance: none;
 		appearance: none;
 
-		width: 30rem;
+		width: 100%;
+		max-width: 30rem;
 
 		height: 0.5rem;
 		background: linear-gradient(
@@ -365,6 +367,8 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
+		width: 100%;
+		max-width: 35rem;
 		background: var(--secondary);
 		gap: 0.5rem;
 		padding: 2rem;
@@ -374,7 +378,8 @@
 	}
 
 	.card h2 {
-		width: 30rem;
+		width: 100%;
+		max-width: 30rem;
 		text-overflow: ellipsis;
 		overflow: hidden;
 	}
@@ -444,7 +449,8 @@
 		background: var(--secondary);
 		padding: 1rem;
 		gap: 1rem;
-		width: 20rem;
+		width: 100%;
+		max-width: 20rem;
 		border-radius: 0.5rem 0 0 0.5rem;
 		transition: all 0.2s ease;
 	}
@@ -484,5 +490,25 @@
 	.delete-button:hover {
 		background: var(--danger);
 		color: var(--text);
+	}
+
+	@media (max-width: 768px) {
+		.controls {
+			gap: 0.2rem;
+		}
+
+		.queue-container {
+			position: relative;
+			right: auto;
+			height: auto;
+			max-height: 60vh;
+			width: 100%;
+			max-width: 35rem;
+			margin-top: 2rem;
+		}
+
+		.queue-item {
+			max-width: 100%;
+		}
 	}
 </style>

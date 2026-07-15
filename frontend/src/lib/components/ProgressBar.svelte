@@ -38,6 +38,7 @@
 	.progress-bar {
 		flex-grow: 1;
 		height: 0.5rem;
+		width: 100%;
 		width: 25rem;
 		background: var(--background);
 		border-radius: 1rem;
