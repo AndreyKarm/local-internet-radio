@@ -19,14 +19,14 @@
 	import CoverImage from '$lib/components/CoverImage.svelte';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import Listeners from '$lib/components/Listeners.svelte';
-	import { RADIO_URL } from '$lib';
+	import { RADIO_URL, RADIO_NAME } from '$lib';
 	import type { SubmitFunction } from '@sveltejs/kit';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 
 	const player = new PlayerState();
-	const RadioName = 'Femboy Radio';
+	const RadioName = RADIO_NAME;
 	const placeholderImage = '/boykisser.png';
 
 	// Sync queue

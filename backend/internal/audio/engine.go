@@ -62,11 +62,60 @@ func NewEngine(s *storage.S3Store, b *broadcaster.Broadcaster) *Engine {
 
 func (e *Engine) Run(ctx context.Context) {
 	// Create a new ffmpeg process
+	// radioFilter := "highpass=f=400,lowpass=f=3500,volume=1.5"
+
+	// radioFilter := "[0:a]" +
+	// 	"highpass=f=500,lowpass=f=2800," +
+	// 	"acrusher=level_in=1:level_out=0.7:bits=6:mode=log:aa=1," +
+	// 	"vibrato=f=4:d=0.3," +
+	// 	"acompressor=threshold=0.1:ratio=9:attack=5:release=50" +
+	// 	"[voice];" +
+	// 	"anoisesrc=d=9999:amplitude=0.02:c=pink:r=44100,aformat=channel_layouts=stereo" +
+	// 	"[noise];" +
+	// 	"[voice][noise]amix=inputs=2:duration=first:weights=1 1" +
+	// 	"[mixed];" +
+	// 	"[mixed]tremolo=f=0.15:d=0.4" +
+	// 	"[aout]"
+
+	// radioFilter := "[0:a]" +
+	// 	// Brutally narrow telephone-tin-can band
+	// 	"highpass=f=800,lowpass=f=2000," +
+	// 	// Heavy pre-gain to force clipping/distortion
+	// 	"volume=6dB," +
+	// 	// Aggressive bitcrush - near-destroyed resolution
+	// 	"acrusher=level_in=1.2:level_out=0.5:bits=4:mode=log:aa=0.5," +
+	// 	// Hard clipping distortion on top of the crush
+	// 	"alimiter=limit=0.6:attack=1:release=20," +
+	// 	// Wow & flutter - warped tape/bad tuner drift
+	// 	"vibrato=f=6:d=0.6," +
+	// 	// Slow deep tremolo - signal fading in/out like bad reception
+	// 	"tremolo=f=0.3:d=0.7," +
+	// 	// Crush dynamics into oblivion (cheap AM compander, cranked)
+	// 	"acompressor=threshold=0.05:ratio=20:attack=2:release=80:makeup=3" +
+	// 	"[voice];" +
+	// 	// Loud pink noise/hiss bed
+	// 	"anoisesrc=d=9999:amplitude=0.05:c=pink:r=44100,aformat=channel_layouts=stereo" +
+	// 	"[hiss];" +
+	// 	// Occasional white-noise crackle layer for extra grit
+	// 	"anoisesrc=d=9999:amplitude=0.03:c=white:r=44100,aformat=channel_layouts=stereo," +
+	// 	"highpass=f=3000" +
+	// 	"[crackle];" +
+	// 	// Mix voice + hiss + crackle together
+	// 	"[voice][hiss]amix=inputs=2:duration=first:weights=1 1[mix1];" +
+	// 	"[mix1][crackle]amix=inputs=2:duration=first:weights=1 0.6[mixed];" +
+	// 	// Random deep signal dropouts - simulates terrible reception
+	// 	"[mixed]tremolo=f=0.1:d=0.9" +
+	// 	"[aout]"
+
+	// log.Println("FFMPEG FILTER:", radioFilter)
+
 	encoder := exec.CommandContext(ctx, "ffmpeg",
 		"-hide_banner", "-loglevel", "error",
 		"-f", "s16le", "-ar", strconv.Itoa(sampleRate), "-ac", strconv.Itoa(channels),
 		"-i", "pipe:0",
-		"-f", "mp3", // Encode as MP3
+		// "-filter_complex", radioFilter,
+		"-map", "[aout]",
+		"-f", "mp3",
 		"-b:a", "128k", "pipe:1",
 	)
 	encoder.Stderr = os.Stderr

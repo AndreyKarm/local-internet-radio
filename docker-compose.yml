@@ -37,12 +37,14 @@ services:
       context: ./frontend
       args:
         VITE_RADIO_URL: "http://radio.femboy.local:8080"
+        VITE_RADIO_NAME: "Local Radio"
     container_name: radio-web
     depends_on:
       - radio
     environment:
       - ORIGIN=http://radio.femboy.local:3000
       - VITE_RADIO_URL=http://radio:8080
+      - VITE_RADIO_NAME="Local Radio"
       - BODY_SIZE_LIMIT=50M
     ports:
       - "3000:3000"

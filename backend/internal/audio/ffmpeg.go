@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"strconv"
@@ -53,8 +52,6 @@ func probeDuration(data []byte) int {
 	if err != nil {
 		return 0
 	}
-
-	log.Printf("duration: %f", durationFloat)
 
 	return int(durationFloat)
 }
