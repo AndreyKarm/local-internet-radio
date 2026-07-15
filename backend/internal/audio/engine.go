@@ -65,7 +65,9 @@ func (e *Engine) Run(ctx context.Context) {
 	encoder := exec.CommandContext(ctx, "ffmpeg",
 		"-hide_banner", "-loglevel", "error",
 		"-f", "s16le", "-ar", strconv.Itoa(sampleRate), "-ac", strconv.Itoa(channels),
-		"-i", "pipe:0", "-f", "mp3", "-b:a", "128k", "pipe:1",
+		"-i", "pipe:0",
+		"-f", "mp3", // Encode as MP3
+		"-b:a", "128k", "pipe:1",
 	)
 	encoder.Stderr = os.Stderr
 

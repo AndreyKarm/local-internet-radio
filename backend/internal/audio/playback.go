@@ -29,8 +29,8 @@ func (e *Engine) playTrack(ctx context.Context, w io.Writer, pace *pacer, info T
 	// Set the now playing
 	e.setNowPlayingFromInfo(info.Key, track, duration, index)
 
-	// Decode the MP3 data
-	decoded, cleanup, err := decodeMP3(ctx, data)
+	// Decode the audio data
+	decoded, cleanup, err := decodeAudioFile(ctx, data)
 	if err != nil {
 		return err
 	}

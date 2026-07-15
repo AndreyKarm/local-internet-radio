@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-func decodeMP3(ctx context.Context, data []byte) (io.Reader, func(), error) {
+func decodeAudioFile(ctx context.Context, data []byte) (io.Reader, func(), error) {
 	// Create a new ffmpeg process
 	cmd := exec.CommandContext(ctx, "ffmpeg",
 		"-hide_banner", "-loglevel", "error",

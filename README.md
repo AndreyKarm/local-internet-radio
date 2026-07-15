@@ -6,7 +6,7 @@ A lightweight, self-hosted radio server designed to stream music directly from y
 
 ### Audio & Metadata
 
-* **Broad Format Support:** Stream MP3, FLAC, and WAV files.
+* **Broad Format Support:** Upload MP3, FLAC, M4A and more.
 * **Rich Metadata:** Automatic extraction of Title, Artist, Album, Track Number, and Duration.
 * **Continuous Playback:** A robust streaming engine designed for uninterrupted listening.
 
