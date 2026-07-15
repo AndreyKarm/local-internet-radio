@@ -4,19 +4,18 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"strconv"
-	"time"
-
-	"github.com/tcolgate/mp3"
+	"strings"
 )
 
 func decodeMP3(ctx context.Context, data []byte) (io.Reader, func(), error) {
 	// Create a new ffmpeg process
 	cmd := exec.CommandContext(ctx, "ffmpeg",
 		"-hide_banner", "-loglevel", "error",
-		"-f", "mp3", "-i", "pipe:0",
+		"-i", "pipe:0",
 		"-vn", "-f", "s16le", "-ar", strconv.Itoa(sampleRate), "-ac", strconv.Itoa(channels), "pipe:1",
 	)
 	// Set the stdin of the command to the data
@@ -36,21 +35,26 @@ func decodeMP3(ctx context.Context, data []byte) (io.Reader, func(), error) {
 }
 
 func probeDuration(data []byte) int {
-	// Create a new decoder
-	decoder := mp3.NewDecoder(bytes.NewReader(data))
-	var frame mp3.Frame
-	var skipped int
-	var total time.Duration
+	cmd := exec.Command("ffprobe",
+		"-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		"-",
+	)
 
-	for {
-		// Decode the next frame
-		if err := decoder.Decode(&frame, &skipped); err != nil {
-			break
-		}
-		// Add the duration of the frame to the total
-		total += frame.Duration()
+	cmd.Stdin = bytes.NewReader(data)
+	out, err := cmd.Output()
+	if err != nil {
+		return 0
 	}
 
-	// Return the total duration in seconds
-	return int(total.Seconds())
+	// Parse the output (e.g., "234.567") into a float, then cast to int seconds
+	durationFloat, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
+	if err != nil {
+		return 0
+	}
+
+	log.Printf("duration: %f", durationFloat)
+
+	return int(durationFloat)
 }
