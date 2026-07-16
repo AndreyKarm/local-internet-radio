@@ -34,11 +34,11 @@ A lightweight, self-hosted radio server designed to stream music directly from y
 
 2. **Access the Interface**
 
- Open your web browser and navigate to: [http://127.0.0.1:3000](http://127.0.0.1:3000)
+  Open your web browser and navigate to: [http://127.0.0.1:3000](http://127.0.0.1:3000)
 
 3. **Populate your Library**
 
- Use the web interface to upload your music files.
+  Use the web interface to upload your music files.
 
 4. **Start Listening**
 

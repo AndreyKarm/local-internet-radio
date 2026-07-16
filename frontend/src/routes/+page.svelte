@@ -230,7 +230,7 @@
 	<div class="filters-section">
 		<h3>Radio Effects</h3>
 		<div class="filters">
-			{#each AudioFilters as f (f.name)}
+			{#each AudioFilters as f, i (i)}
 				<form
 					method="POST"
 					action="?/setFilter"

@@ -148,6 +148,7 @@ func (b *Broadcaster) notifyChange() {
 	b.mu.Lock()
 	fn := b.onChange
 	b.mu.Unlock()
+
 	if fn != nil {
 		fn()
 	}

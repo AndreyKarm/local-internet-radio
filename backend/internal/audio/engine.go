@@ -120,8 +120,8 @@ func (e *Engine) runEncoderSession(ctx context.Context, cancelSession context.Ca
 	log.Printf("Starting ffmpeg with filter: %s", filter)
 
 	var complexFilter string
-	if strings.Contains(filter, "[aout]") {
-		complexFilter = fmt.Sprintf("[0:a]%s", filter)
+	if strings.HasPrefix(filter, "[0:a]") || strings.Contains(filter, "[aout]") {
+		complexFilter = filter
 	} else {
 		complexFilter = fmt.Sprintf("[0:a]%s[aout]", filter)
 	}
@@ -272,8 +272,10 @@ func (e *Engine) playbackLoop(ctx context.Context, w io.Writer) {
 
 func (e *Engine) SetFilter(filterStr string) {
 	e.filterMu.Lock()
+	log.Println("Locking filter")
 	e.currentFilter = filterStr
 	e.filterMu.Unlock()
+	log.Println("Unlocking filter")
 
 	// Non-blocking send to signal the restart
 	select {
