@@ -27,8 +27,12 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - S3_ENDPOINT_URL=rustfs:9000 
       - PORT=8080
+      - S3_ENDPOINT_URL=rustfs:9000
+      - S3_BUCKET_NAME=music
+      - S3_ACCESS_KEY_ID=radiouser
+      - S3_SECRET_ACCESS_KEY=radiopass123
+      - S3_USE_SSL=false
     ports:
       - "8080:8080"
 
