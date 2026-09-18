@@ -65,8 +65,6 @@ func main() {
 	mux.HandleFunc("/skip", api.SkipHandler(engine))
 	mux.HandleFunc("/previous", api.PreviousHandler(engine))
 	mux.HandleFunc("/loop", api.LoopHandler(engine))
-	mux.HandleFunc("/filter", api.SetFilterHandler(engine))
-	mux.HandleFunc("/filter/get", api.GetFilterHandler(engine))
 
 	// Websockets
 	mux.HandleFunc("/ws/now-playing", api.NowPlayingWSHandler(engine))
@@ -84,10 +82,10 @@ func main() {
 	handlerWithCors := c.Handler(logMiddleware(mux))
 
 	// Get the server port from the environment variable PORT, or default to 8080
-	serverPort := int64(8080)
+	serverPort := int16(8080)
 	if p := os.Getenv("PORT"); p != "" {
 		if parsed, err := strconv.ParseInt(p, 10, 64); err == nil {
-			serverPort = parsed
+			serverPort = int16(parsed)
 		} else {
 			log.Printf("invalid PORT %q, falling back to %d", p, serverPort)
 		}

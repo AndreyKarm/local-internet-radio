@@ -1,8 +1,10 @@
 package broadcaster
 
 import (
+	"bytes"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -18,50 +20,42 @@ type MetadataProvider interface {
 }
 
 func New() *Broadcaster {
-	// Create a new broadcaster with an empty map of clients
 	return &Broadcaster{clients: make(map[chan []byte]struct{})}
 }
 
 func (b *Broadcaster) Subscribe() chan []byte {
-	// Create a new channel
 	ch := make(chan []byte, 8)
 	b.mu.Lock()
-	// Add the channel to the clients map
 	b.clients[ch] = struct{}{}
 	b.mu.Unlock()
-
 	b.notifyChange()
 	return ch
 }
 
 func (b *Broadcaster) Unsubscribe(ch chan []byte) {
 	b.mu.Lock()
-	// Remove the channel from the clients map
 	delete(b.clients, ch)
 	b.mu.Unlock()
-
 	b.notifyChange()
 }
 
 func (b *Broadcaster) Publish(chunk []byte) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	// Broadcast the chunk to all clients
 	for ch := range b.clients {
-		// Try to send the chunk to the channel
+		copied := make([]byte, len(chunk))
+		copy(copied, chunk)
 		select {
-		case ch <- chunk:
+		case ch <- copied:
 		default:
 		}
 	}
 }
 
 func (b *Broadcaster) StreamHandler(w http.ResponseWriter, r *http.Request) {
-	// Create a new channel
 	ch := b.Subscribe()
 	defer b.Unsubscribe(ch)
 
-	// Check if ICY metadata is requested
 	wantsICY := r.Header.Get("Icy-MetaData") == "1"
 
 	w.Header().Set("Content-Type", "audio/mpeg")
@@ -72,63 +66,45 @@ func (b *Broadcaster) StreamHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("icy-name", "Femboy Radio")
 	}
 
-	// Check if the request supports streaming
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
 
-	// Create a writer
 	var writer icyInjector
 	if wantsICY {
-		// Create a new ICY writer
 		writer = newICYWriter(w, b.currentTitle)
 	} else {
-		// Create a plain writer
 		writer = plainWriter{w}
 	}
 
-	// Write the initial metadata
 	for {
 		select {
 		case chunk := <-ch:
-			// Write the chunk to the writer
 			if err := writer.Write(chunk); err != nil {
 				return
 			}
-			// Flush the writer
 			flusher.Flush()
 		case <-r.Context().Done():
-			// Unsubscribe from the channel
 			return
 		}
 	}
 }
 
-func (p plainWriter) Write(b []byte) error {
-	// Write the bytes to the response writer
-	_, err := p.w.Write(b)
-	return err
-}
-
 func (b *Broadcaster) SetMetadataProvider(mp MetadataProvider) {
 	b.mu.Lock()
-	// Set the metadata provider
 	b.metadata = mp
 	b.mu.Unlock()
 }
 
 func (b *Broadcaster) currentTitle() string {
 	b.mu.Lock()
-	// Get the metadata provider
 	mp := b.metadata
 	b.mu.Unlock()
-	// If the metadata provider is nil, return an empty string
 	if mp == nil {
 		return ""
 	}
-	// Return the current stream title
 	return mp.CurrentStreamTitle()
 }
 
@@ -148,8 +124,74 @@ func (b *Broadcaster) notifyChange() {
 	b.mu.Lock()
 	fn := b.onChange
 	b.mu.Unlock()
-
 	if fn != nil {
 		fn()
 	}
+}
+
+// ---------- ICY metadata injection ----------
+
+const icyMetaInt = 16000
+
+type icyInjector interface {
+	Write(p []byte) error
+}
+
+type plainWriter struct{ w http.ResponseWriter }
+
+func (p plainWriter) Write(b []byte) error {
+	_, err := p.w.Write(b)
+	return err
+}
+
+type icyWriter struct {
+	w           http.ResponseWriter
+	getTitle    func() string
+	bytesToMeta int
+	lastTitle   string
+	buf         bytes.Buffer
+}
+
+func newICYWriter(w http.ResponseWriter, getTitle func() string) *icyWriter {
+	return &icyWriter{w: w, getTitle: getTitle, bytesToMeta: icyMetaInt}
+}
+
+func (iw *icyWriter) writeMetaBlock(buf *bytes.Buffer) {
+	title := iw.getTitle()
+	if title == iw.lastTitle {
+		buf.WriteByte(0x00)
+		return
+	}
+	iw.lastTitle = title
+
+	tag := "StreamTitle='" + strings.ReplaceAll(title, "'", "") + "';"
+	blockLen := (len(tag) + 15) / 16 // round up to nearest 16 bytes
+	buf.WriteByte(byte(blockLen))
+
+	padded := make([]byte, blockLen*16)
+	copy(padded, tag)
+	buf.Write(padded)
+}
+
+func (iw *icyWriter) Write(b []byte) error {
+	iw.buf.Reset()
+	for len(b) > 0 {
+		if iw.bytesToMeta > len(b) {
+			iw.buf.Write(b)
+			iw.bytesToMeta -= len(b)
+			b = nil
+			break
+		}
+
+		if iw.bytesToMeta > 0 {
+			iw.buf.Write(b[:iw.bytesToMeta])
+			b = b[iw.bytesToMeta:]
+		}
+
+		iw.writeMetaBlock(&iw.buf)
+		iw.bytesToMeta = icyMetaInt
+	}
+
+	_, err := iw.w.Write(iw.buf.Bytes())
+	return err
 }
