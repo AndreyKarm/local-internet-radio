@@ -1,4 +1,4 @@
-FROM golang:1.26.5-alpine AS build
+FROM golang:1.27.1-alpine AS build
 WORKDIR /app
 RUN apk add --no-cache git
 COPY go.mod go.sum ./
@@ -16,7 +16,7 @@ WORKDIR /app
 COPY --from=build /app/radio .
 
 ENV S3_ENDPOINT_URL="rustfs:9000"
-ENV PORT=8080
+ENV PORT=8686
 
-EXPOSE 8080
+EXPOSE 8686
 CMD ["./radio"]

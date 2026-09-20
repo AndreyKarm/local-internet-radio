@@ -70,7 +70,7 @@ func main() {
 	mux.HandleFunc("/ws/now-playing", api.NowPlayingWSHandler(engine))
 
 	c := cors.New(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"},
+		AllowedOrigins:   []string{"http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"},
 		AllowedMethods:   []string{"GET", "POST", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Content-Type", "Range", "Icy-MetaData"},
 		ExposedHeaders:   []string{"Content-Length"},
@@ -81,8 +81,8 @@ func main() {
 	// handlerWithCors := c.Handler(mux)
 	handlerWithCors := c.Handler(logMiddleware(mux))
 
-	// Get the server port from the environment variable PORT, or default to 8080
-	serverPort := int16(8080)
+	// Get the server port from the environment variable PORT, or default to 8686
+	serverPort := int16(8686)
 	if p := os.Getenv("PORT"); p != "" {
 		if parsed, err := strconv.ParseInt(p, 10, 64); err == nil {
 			serverPort = int16(parsed)

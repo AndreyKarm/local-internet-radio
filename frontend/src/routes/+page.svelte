@@ -336,7 +336,7 @@
 		{/if}
 
 		{#if player.queue}
-			{#each filteredQueue as { song, i } (i)}
+			{#each filteredQueue as { song, i } (song.key)}
 				<div
 					title={songTitle(song)}
 					class="queue-item-wrapper"

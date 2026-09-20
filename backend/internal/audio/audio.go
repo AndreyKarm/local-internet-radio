@@ -2,6 +2,7 @@ package audio
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -67,6 +68,14 @@ type Engine struct {
 
 	infoCache   map[string]TrackInfo
 	infoCacheMu sync.Mutex
+
+	prefetchMu sync.Mutex
+	prefetched *prefetchedTrack
+}
+
+type prefetchedTrack struct {
+	key  string
+	data []byte
 }
 
 func NewEngine(s *storage.S3Store, b *broadcaster.Broadcaster) *Engine {
@@ -84,7 +93,7 @@ func (e *Engine) Run(ctx context.Context) {
 
 // periodicPlaylistRefresh keeps the playlist in sync with the bucket in the
 // background so playbackLoop doesn't need to hit S3's ListObjects on every
-// single track transition (which was adding latency to every skip).
+// single track transition.
 func (e *Engine) periodicPlaylistRefresh(ctx context.Context) {
 	ticker := time.NewTicker(playlistRefreshInterval)
 	defer ticker.Stop()
@@ -156,6 +165,18 @@ func (e *Engine) playbackLoop(ctx context.Context) {
 
 		currentTrack := tracks[idx]
 
+		// Kick off a background download of the track that will naturally
+		// play next (auto-advance / Skip land on the same index), so it's
+		// already in memory by the time we need it. Uses the root ctx (not
+		// trackCtx) so a Skip/Previous on the *current* track doesn't cancel
+		// this fetch.
+		nextIdx := idx + 1
+		if nextIdx >= len(tracks) {
+			nextIdx = 0
+		}
+		nextTrack := tracks[nextIdx]
+		go e.prefetchTrack(ctx, nextTrack.Key)
+
 		trackCtx, cancel := context.WithCancel(ctx)
 		e.trackMuControl.Lock()
 		e.cancelTrack = cancel
@@ -179,23 +200,64 @@ func (e *Engine) playbackLoop(ctx context.Context) {
 	}
 }
 
-// playTrack streams the object directly from S3/MinIO frame-by-frame
-// instead of downloading the whole file to disk first. This is what made
-// skip/previous feel laggy — playback used to wait for the entire file to
-// finish downloading before the first frame was ever published.
-func (e *Engine) playTrack(ctx context.Context, pace *pacer, info TrackInfo, index int, queue []TrackInfo) error {
-	obj, err := e.store.GetObject(ctx, info.Key)
+// fetchTrackBytes downloads an object fully into memory, closing the
+// underlying S3/MinIO connection as soon as the transfer completes rather
+// than holding it open for the whole (paced) playback duration.
+func (e *Engine) fetchTrackBytes(ctx context.Context, key string) ([]byte, error) {
+	obj, err := e.store.GetObject(ctx, key)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer obj.Close()
+	return io.ReadAll(obj)
+}
 
-	stat, err := obj.Stat()
-	if err != nil {
-		return err
+func (e *Engine) prefetchTrack(ctx context.Context, key string) {
+	e.prefetchMu.Lock()
+	alreadyCached := e.prefetched != nil && e.prefetched.key == key
+	e.prefetchMu.Unlock()
+	if alreadyCached {
+		return
 	}
 
-	br := bufio.NewReader(obj)
+	data, err := e.fetchTrackBytes(ctx, key)
+	if err != nil {
+		if ctx.Err() == nil {
+			log.Printf("prefetch failed for %s: %v", key, err)
+		}
+		return
+	}
+
+	e.prefetchMu.Lock()
+	e.prefetched = &prefetchedTrack{key: key, data: data}
+	e.prefetchMu.Unlock()
+}
+
+func (e *Engine) takePrefetched(key string) ([]byte, bool) {
+	e.prefetchMu.Lock()
+	defer e.prefetchMu.Unlock()
+	if e.prefetched != nil && e.prefetched.key == key {
+		data := e.prefetched.data
+		e.prefetched = nil
+		return data, true
+	}
+	return nil, false
+}
+
+func (e *Engine) playTrack(ctx context.Context, pace *pacer, info TrackInfo, index int, queue []TrackInfo) error {
+	var data []byte
+
+	if cached, ok := e.takePrefetched(info.Key); ok {
+		data = cached
+	} else {
+		fetched, err := e.fetchTrackBytes(ctx, info.Key)
+		if err != nil {
+			return err
+		}
+		data = fetched
+	}
+
+	br := bufio.NewReader(bytes.NewReader(data))
 
 	track, tagLen, err := media.ReadID3v2(br, info.Key)
 	if err != nil {
@@ -204,8 +266,8 @@ func (e *Engine) playTrack(ctx context.Context, pace *pacer, info TrackInfo, ind
 
 	// Duration from file size (minus the ID3v2 tag) since it's CBR.
 	var duration int
-	if stat.Size > int64(tagLen) {
-		duration = media.EstimateDuration(stat.Size - int64(tagLen))
+	if len(data) > tagLen {
+		duration = media.EstimateDuration(int64(len(data) - tagLen))
 	}
 
 	log.Printf("now playing (%d/%d): %s\n", index+1, len(queue), track.StreamTitle())
@@ -218,7 +280,7 @@ func (e *Engine) playTrack(ctx context.Context, pace *pacer, info TrackInfo, ind
 		default:
 		}
 
-		frame, data, err := media.ReadFrame(br)
+		frame, fdata, err := media.ReadFrame(br)
 		if err != nil {
 			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 				return nil // clean end of audio
@@ -226,7 +288,7 @@ func (e *Engine) playTrack(ctx context.Context, pace *pacer, info TrackInfo, ind
 			return err
 		}
 
-		e.broadcaster.Publish(data)
+		e.broadcaster.Publish(fdata)
 		pace.wait(frame.Duration())
 	}
 }

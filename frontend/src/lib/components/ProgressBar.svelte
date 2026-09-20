@@ -3,9 +3,7 @@
 
 	function formatTime(seconds: number) {
 		if (isNaN(seconds) || seconds < 0) return '0:00';
-		const m = Math.floor(seconds / 60);
-		const s = Math.floor(seconds % 60);
-		return `${m}:${s.toString().padStart(2, '0')}`;
+		return new Date(seconds * 1000).toISOString().substring(14, 19);
 	}
 
 	let remaining = $derived(duration - elapsed);
