@@ -6,8 +6,8 @@ services:
       - "9044:9000"
       - "9045:9001"
     environment:
-      RUSTFS_ACCESS_KEY: radiouser
-      RUSTFS_SECRET_KEY: radiopass123
+      RUSTFS_ACCESS_KEY: radio
+      RUSTFS_SECRET_KEY: 8706fc92efad776eb0fd8257bd0aea17ad139553c8dcbfba92102d57718813d5
     volumes:
       - rustfs_data:/data
     healthcheck:
@@ -23,31 +23,31 @@ services:
     depends_on:
       rustfs:
         condition: service_healthy
-      # - postgres
+    # - postgres
     env_file:
       - ./backend/.env
     environment:
-      - PORT=8080
+      - PORT=8686
       - S3_ENDPOINT_URL=rustfs:9000
       - S3_BUCKET_NAME=music
-      - S3_ACCESS_KEY_ID=radiouser
-      - S3_SECRET_ACCESS_KEY=radiopass123
+      - S3_ACCESS_KEY_ID=radio
+      - S3_SECRET_ACCESS_KEY=8706fc92efad776eb0fd8257bd0aea17ad139553c8dcbfba92102d57718813d5
       - S3_USE_SSL=false
     ports:
-      - "8080:8080"
+      - "8686:8686"
 
   web:
     build:
       context: ./frontend
       args:
-        VITE_RADIO_URL: "http://radio.femboy.local:8080"
+        VITE_RADIO_URL: "http://localhost:8686"
         VITE_RADIO_NAME: "Local Radio"
     container_name: radio-web
     depends_on:
       - radio
     environment:
-      - ORIGIN=http://radio.femboy.local:3000
-      - VITE_RADIO_URL=http://radio:8080
+      - ORIGIN=http://localhost:3000
+      - VITE_RADIO_URL=http://radio:8686
       - VITE_RADIO_NAME="Local Radio"
       - BODY_SIZE_LIMIT=50M
     ports:
