@@ -9,7 +9,6 @@ A lightweight, self-hosted radio server designed to stream music directly from y
 * **Broad Format Support:** Upload MP3, FLAC, M4A and more.
 * **Rich Metadata:** Automatic extraction of Title, Artist, Album, Track Number, and Duration.
 * **Continuous Playback:** A robust streaming engine designed for uninterrupted listening.
-* **Audio Filters** Provides audio effects in real-time. (work in progress)
 
 ### Management & Interface
 

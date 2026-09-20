@@ -4,252 +4,243 @@ import { RADIO_URL } from '$lib';
 import type { TQueueSong, TSongData } from '$lib/types';
 
 export class PlayerState {
-  data = $state<TSongData | undefined>(undefined);
-  queue = $state<TQueueSong[]>([]);
-  timestamp = $state(Date.now());
-  elapsed = $state(0);
-  remaining = $state(0);
+	data = $state<TSongData | undefined>(undefined);
+	queue = $state<TQueueSong[]>([]);
+	timestamp = $state(Date.now());
+	elapsed = $state(0);
+	remaining = $state(0);
 
-  private audio: HTMLAudioElement | undefined;
-  private ws: WebSocket | undefined;
-  private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
-  private timer: ReturnType<typeof setInterval> | undefined;
+	private audio: HTMLAudioElement | undefined;
+	private ws: WebSocket | undefined;
+	private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+	private timer: ReturnType<typeof setInterval> | undefined;
 
-  private lastPauseTime: number = 0;
+	private lastPauseTime: number = 0;
 
-  setAudioElement(el: HTMLAudioElement) {
-    this.audio = el;
+	setAudioElement(el: HTMLAudioElement) {
+		this.audio = el;
 
+		this.audio.addEventListener('play', () => {
+			this.updateMediaSessionPlaybackState();
+			// Force a metadata refresh when playing starts
+			this.updateMediaSessionMetadata();
+		});
 
-    this.audio.addEventListener('play', () => {
-      this.updateMediaSessionPlaybackState();
-      // Force a metadata refresh when playing starts
-      this.updateMediaSessionMetadata();
-    });
+		this.audio.addEventListener('pause', () => {
+			this.updateMediaSessionPlaybackState();
+		});
 
-    this.audio.addEventListener('pause', () => {
-      this.updateMediaSessionPlaybackState();
-    });
+		this.audio.addEventListener('loadedmetadata', () => {
+			// Ensure metadata is synced as soon as the stream is recognized
+			this.updateMediaSessionMetadata();
+		});
 
-    this.audio.addEventListener('loadedmetadata', () => {
-      // Ensure metadata is synced as soon as the stream is recognized
-      this.updateMediaSessionMetadata();
-    });
+		if (get(settings).playing) {
+			this.playStream();
+		}
+	}
 
+	init() {
+		this.connectWebSocket();
+		this.startTimer();
+		this.setupMediaSession();
+	}
 
-    if (get(settings).playing) {
-      this.playStream();
-    }
-  }
+	destroy() {
+		if (this.timer) clearInterval(this.timer);
+		if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+		if (this.ws) {
+			this.ws.onclose = null;
+			this.ws.close();
+		}
+	}
 
-  init() {
-    this.connectWebSocket();
-    this.startTimer();
-    this.setupMediaSession();
-  }
+	private setupMediaSession() {
+		if (!('mediaSession' in navigator)) return;
 
-  destroy() {
-    if (this.timer) clearInterval(this.timer);
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    if (this.ws) {
-      this.ws.onclose = null;
-      this.ws.close();
-    }
-  }
+		navigator.mediaSession.setActionHandler('play', () => {
+			this.togglePlay();
+		});
 
-  private setupMediaSession() {
-    if (!('mediaSession' in navigator)) return;
+		navigator.mediaSession.setActionHandler('pause', () => {
+			this.togglePlay();
+		});
 
-    navigator.mediaSession.setActionHandler('play', () => {
-      this.togglePlay();
-    });
+		navigator.mediaSession.setActionHandler('previoustrack', () => {
+			this.previous();
+		});
 
-    navigator.mediaSession.setActionHandler('pause', () => {
-      this.togglePlay();
-    });
+		navigator.mediaSession.setActionHandler('nexttrack', () => {
+			this.skip();
+		});
+	}
 
-    navigator.mediaSession.setActionHandler('previoustrack', () => {
-      this.previous();
-    });
+	private updateMediaSessionMetadata() {
+		if (!('mediaSession' in navigator) || !this.data) return;
 
-    navigator.mediaSession.setActionHandler('nexttrack', () => {
-      this.skip();
-    });
-  }
+		const metadata = new MediaMetadata({
+			title: this.data.title,
+			artist: this.data.artist,
+			album: this.data.album,
+			artwork: this.data.cover
+				? [
+						{
+							src: `${RADIO_URL}${this.data.cover}?t=${this.timestamp}`,
+							type: 'image/png'
+						}
+					]
+				: []
+		});
 
-  private updateMediaSessionMetadata() {
-    if (!('mediaSession' in navigator) || !this.data) return;
+		navigator.mediaSession.metadata = metadata;
+	}
 
-    const metadata = new MediaMetadata({
-      title: this.data.title,
-      artist: this.data.artist,
-      album: this.data.album,
-      artwork: this.data.cover
-        ? [
-          {
-            src: `${RADIO_URL}${this.data.cover}?t=${this.timestamp}`,
-            type: 'image/png'
-          }
-        ]
-        : []
-    });
+	private updateMediaSessionPlaybackState() {
+		if (!('mediaSession' in navigator)) return;
+		navigator.mediaSession.playbackState = get(settings).playing ? 'playing' : 'paused';
+	}
 
-    navigator.mediaSession.metadata = metadata;
-  }
+	private updateMediaSessionPosition() {
+		if (!('mediaSession' in navigator) || !this.data?.duration) return;
 
-  private updateMediaSessionPlaybackState() {
-    if (!('mediaSession' in navigator)) return;
-    navigator.mediaSession.playbackState = get(settings).playing
-      ? 'playing'
-      : 'paused';
-  }
+		try {
+			navigator.mediaSession.setPositionState({
+				duration: this.data.duration,
+				playbackRate: 1,
+				position: Math.min(this.elapsed, this.data.duration)
+			});
+		} catch (e) {
+			console.error('Failed to update media session position:', e);
+		}
+	}
 
-  private updateMediaSessionPosition() {
-    if (!('mediaSession' in navigator) || !this.data?.duration) return;
+	private previous() {
+		fetch(`${RADIO_URL}/previous`, { method: 'POST' }).catch(console.error);
+	}
 
-    try {
-      navigator.mediaSession.setPositionState({
-        duration: this.data.duration,
-        playbackRate: 1,
-        position: Math.min(this.elapsed, this.data.duration)
-      });
-    } catch (e) {
-      console.error('Failed to update media session position:', e);
-    }
-  }
+	private skip() {
+		fetch(`${RADIO_URL}/skip`, { method: 'POST' }).catch(console.error);
+	}
 
-  private previous() {
-    fetch(`${RADIO_URL}/previous`, { method: 'POST' }).catch(console.error);
-  }
+	public togglePlay() {
+		if (!this.audio) return;
+		const current = get(settings);
 
-  private skip() {
-    fetch(`${RADIO_URL}/skip`, { method: 'POST' }).catch(console.error);
-  }
+		if (current.playing) {
+			this.audio.pause();
+			this.lastPauseTime = Date.now();
+			settings.update((s) => ({ ...s, playing: false }));
+		} else {
+			const pauseDuration = Date.now() - this.lastPauseTime;
 
-  public togglePlay() {
-    if (!this.audio) return;
-    const current = get(settings);
+			if (this.audio.src && pauseDuration < 5000) {
+				this.audio.play().catch((err) => {
+					console.error('Playback failed:', err);
+					settings.update((s) => ({ ...s, playing: false }));
+				});
+			} else {
+				this.playStream();
+			}
+			settings.update((s) => ({ ...s, playing: true }));
+		}
 
-    if (current.playing) {
-      this.audio.pause();
-      this.lastPauseTime = Date.now();
-      settings.update((s) => ({ ...s, playing: false }));
-    } else {
-      const pauseDuration = Date.now() - this.lastPauseTime;
+		this.updateMediaSessionPlaybackState();
+	}
 
-      if (this.audio.src && pauseDuration < 5000) {
-        this.audio.play().catch((err) => {
-          console.error('Playback failed:', err);
-          settings.update((s) => ({ ...s, playing: false }));
-        });
-      } else {
-        this.playStream();
-      }
-      settings.update((s) => ({ ...s, playing: true }));
-    }
+	private playStream() {
+		if (!this.audio) return;
 
-    this.updateMediaSessionPlaybackState();
-  }
+		this.audio.src = `${RADIO_URL}/stream?t=${Date.now()}`;
 
-  private playStream() {
-    if (!this.audio) return;
+		this.audio.play().catch((err) => {
+			console.error('Playback failed:', err);
+			settings.update((s) => ({ ...s, playing: false }));
+		});
+	}
 
-    this.audio.src = `${RADIO_URL}/stream?t=${Date.now()}`;
+	private connectWebSocket() {
+		if (
+			this.ws &&
+			(this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)
+		) {
+			return;
+		}
 
-    this.audio.play().catch((err) => {
-      console.error('Playback failed:', err);
-      settings.update((s) => ({ ...s, playing: false }));
-    });
-  }
+		const wsUrl = RADIO_URL.replace(/^http/, 'ws') + '/ws/now-playing';
+		this.ws = new WebSocket(wsUrl);
 
-  private connectWebSocket() {
-    if (
-      this.ws &&
-      (this.ws.readyState === WebSocket.OPEN ||
-        this.ws.readyState === WebSocket.CONNECTING)
-    ) {
-      return;
-    }
+		this.ws.onmessage = async (event) => {
+			try {
+				const response = JSON.parse(event.data);
 
-    const wsUrl = RADIO_URL.replace(/^http/, 'ws') + '/ws/now-playing';
-    this.ws = new WebSocket(wsUrl);
+				console.log(response);
 
-    this.ws.onmessage = async (event) => {
-      try {
-        const response = JSON.parse(event.data);
+				if (response.track !== undefined || response.title !== undefined) {
+					const titleChanged = this.data?.title !== response.title;
+					if (titleChanged) {
+						this.timestamp = Date.now();
+					}
+					this.data = {
+						...(this.data as TSongData),
+						...response
+					} as TSongData;
 
-        console.log(response)
+					if (response.queue) {
+						this.queue = response.queue;
+					}
 
-        if (response.track !== undefined || response.title !== undefined) {
-          const titleChanged = this.data?.title !== response.title;
-          if (titleChanged) {
-            this.timestamp = Date.now();
-          }
-          this.data = {
-            ...(this.data as TSongData),
-            ...response
-          } as TSongData;
+					if (titleChanged) {
+						this.updateMediaSessionMetadata();
+					}
+					this.updateMediaSessionPosition();
+				}
 
-          if (response.queue) {
-            this.queue = response.queue;
-          }
+				if (response.filter !== undefined) {
+					if (this.data) {
+						this.data = {
+							...this.data,
+							currentFilter: response.filter
+						} as TSongData;
+					}
+				}
+			} catch (e) {
+				console.error('Failed to parse WebSocket message', e);
+			}
+		};
 
-          if (titleChanged) {
-            this.updateMediaSessionMetadata();
-          }
-          this.updateMediaSessionPosition();
-        }
+		this.ws.onclose = () => {
+			console.log('WebSocket disconnected. Reconnecting in 3s...');
+			this.reconnectTimer = setTimeout(() => this.connectWebSocket(), 3000);
+		};
 
-        if (response.filter !== undefined) {
+		this.ws.onerror = (err) => {
+			console.error('WebSocket error:', err);
+			this.ws?.close();
+		};
+	}
 
-          if (this.data) {
-            this.data = {
-              ...this.data,
-              currentFilter: response.filter
-            } as TSongData;
-          }
-        }
+	setQueue(queue: TQueueSong[]) {
+		this.queue = queue;
+	}
 
-      } catch (e) {
-        console.error('Failed to parse WebSocket message', e);
-      }
-    };
+	private startTimer() {
+		this.timer = setInterval(() => {
+			if (this.data && this.data.duration && this.data.started_at) {
+				const now = Date.now();
+				let currentElapsed = Math.floor((now - this.data.started_at) / 1000);
 
-    this.ws.onclose = () => {
-      console.log('WebSocket disconnected. Reconnecting in 3s...');
-      this.reconnectTimer = setTimeout(() => this.connectWebSocket(), 3000);
-    };
+				if (currentElapsed > this.data.duration) {
+					currentElapsed = this.data.duration;
+				}
 
-    this.ws.onerror = (err) => {
-      console.error('WebSocket error:', err);
-      this.ws?.close();
-    };
-  }
+				this.elapsed = currentElapsed;
+				this.remaining = this.data.duration - this.elapsed;
 
-  setQueue(queue: TQueueSong[]) {
-    this.queue = queue;
-  }
-
-  private startTimer() {
-    this.timer = setInterval(() => {
-      if (this.data && this.data.duration && this.data.started_at) {
-        const now = Date.now();
-        let currentElapsed = Math.floor(
-          (now - this.data.started_at) / 1000
-        );
-
-        if (currentElapsed > this.data.duration) {
-          currentElapsed = this.data.duration;
-        }
-
-        this.elapsed = currentElapsed;
-        this.remaining = this.data.duration - this.elapsed;
-
-        this.updateMediaSessionPosition();
-      } else {
-        this.elapsed = 0;
-        this.remaining = 0;
-      }
-    }, 1000);
-  }
+				this.updateMediaSessionPosition();
+			} else {
+				this.elapsed = 0;
+				this.remaining = 0;
+			}
+		}, 1000);
+	}
 }

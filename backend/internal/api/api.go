@@ -308,7 +308,7 @@ func CoverHandler(cp CoverProvider) http.HandlerFunc {
 			mime = "image/jpeg"
 		}
 		w.Header().Set("Content-Type", mime)
-		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		w.Write(data)
 	}
 }

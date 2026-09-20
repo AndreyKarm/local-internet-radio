@@ -8,7 +8,6 @@ import (
 	"io"
 	"log"
 	"math/rand/v2"
-	"os"
 	"sort"
 	"sync"
 	"time"
@@ -18,7 +17,10 @@ import (
 	"liotom/local-radio/internal/storage"
 )
 
-const playlistRetryDelay = 5 * time.Second
+const (
+	playlistRetryDelay      = 5 * time.Second
+	playlistRefreshInterval = 30 * time.Second
+)
 
 // ---------- Types ----------
 
@@ -75,7 +77,29 @@ func NewEngine(s *storage.S3Store, b *broadcaster.Broadcaster) *Engine {
 	}
 }
 
-func (e *Engine) Run(ctx context.Context) { e.playbackLoop(ctx) }
+func (e *Engine) Run(ctx context.Context) {
+	go e.periodicPlaylistRefresh(ctx)
+	e.playbackLoop(ctx)
+}
+
+// periodicPlaylistRefresh keeps the playlist in sync with the bucket in the
+// background so playbackLoop doesn't need to hit S3's ListObjects on every
+// single track transition (which was adding latency to every skip).
+func (e *Engine) periodicPlaylistRefresh(ctx context.Context) {
+	ticker := time.NewTicker(playlistRefreshInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := e.refreshPlaylist(ctx); err != nil {
+				log.Printf("periodic playlist refresh failed: %v", err)
+			}
+		}
+	}
+}
 
 // ---------- Pacer ----------
 
@@ -105,10 +129,6 @@ func (e *Engine) playbackLoop(ctx context.Context) {
 	}
 
 	for {
-		if err := e.refreshPlaylist(ctx); err != nil {
-			return
-		}
-
 		e.playlistMu.Lock()
 		tracks := make([]TrackInfo, len(e.activePlaylist))
 		copy(tracks, e.activePlaylist)
@@ -119,6 +139,9 @@ func (e *Engine) playbackLoop(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-time.After(playlistRetryDelay):
+				if err := e.refreshPlaylist(ctx); err != nil {
+					return
+				}
 				continue
 			}
 		}
@@ -156,32 +179,23 @@ func (e *Engine) playbackLoop(ctx context.Context) {
 	}
 }
 
+// playTrack streams the object directly from S3/MinIO frame-by-frame
+// instead of downloading the whole file to disk first. This is what made
+// skip/previous feel laggy — playback used to wait for the entire file to
+// finish downloading before the first frame was ever published.
 func (e *Engine) playTrack(ctx context.Context, pace *pacer, info TrackInfo, index int, queue []TrackInfo) error {
 	obj, err := e.store.GetObject(ctx, info.Key)
 	if err != nil {
 		return err
 	}
+	defer obj.Close()
 
-	tmp, err := os.CreateTemp("", "playing-*.mp3")
+	stat, err := obj.Stat()
 	if err != nil {
-		obj.Close()
-		return err
-	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
-	defer tmp.Close()
-
-	if _, err := io.Copy(tmp, obj); err != nil {
-		obj.Close()
-		return err
-	}
-	obj.Close()
-
-	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
 
-	br := bufio.NewReader(tmp)
+	br := bufio.NewReader(obj)
 
 	track, tagLen, err := media.ReadID3v2(br, info.Key)
 	if err != nil {
@@ -190,8 +204,8 @@ func (e *Engine) playTrack(ctx context.Context, pace *pacer, info TrackInfo, ind
 
 	// Duration from file size (minus the ID3v2 tag) since it's CBR.
 	var duration int
-	if st, err := tmp.Stat(); err == nil && st.Size() > int64(tagLen) {
-		duration = media.EstimateDuration(st.Size() - int64(tagLen))
+	if stat.Size > int64(tagLen) {
+		duration = media.EstimateDuration(stat.Size - int64(tagLen))
 	}
 
 	log.Printf("now playing (%d/%d): %s\n", index+1, len(queue), track.StreamTitle())

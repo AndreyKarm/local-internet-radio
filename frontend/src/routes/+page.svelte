@@ -10,18 +10,20 @@
 		Play,
 		Repeat,
 		Repeat1,
+		Search,
 		Shuffle,
 		Trash,
 		Volume2,
-		VolumeX
+		VolumeX,
+		X
 	} from '@lucide/svelte';
-	import { enhance } from '$app/forms';
+	import { deserialize, enhance } from '$app/forms';
 	import CoverImage from '$lib/components/CoverImage.svelte';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import Listeners from '$lib/components/Listeners.svelte';
 	import { RADIO_URL, RADIO_NAME } from '$lib';
-	import type { SubmitFunction } from '@sveltejs/kit';
 	import type { PageProps } from './$types';
+	import { invalidateAll } from '$app/navigation';
 
 	let { data }: PageProps = $props();
 
@@ -37,6 +39,19 @@
 	// Current track data
 	let currentTrack = $derived(player.data);
 	let currentIndex = $derived(player.queue.findIndex((song) => song.key === currentTrack?.track));
+
+	// Search
+	let searchQuery = $state('');
+
+	let filteredQueue = $derived(
+		player.queue
+			.map((song, i) => ({ song, i })) // keep original index for play/delete
+			.filter(({ song }) => {
+				const q = searchQuery.trim().toLowerCase();
+				if (!q) return true;
+				return songTitle(song).toLowerCase().includes(q);
+			})
+	);
 
 	// Change page title on song change
 	$effect(() => {
@@ -122,24 +137,61 @@
 
 	// Uploading
 	let fileInput: HTMLInputElement;
-	let formElement: HTMLFormElement;
 	let isUploading = $state(false);
+	let uploadTotal = $state(0);
+	let uploadCurrent = $state(0);
+	let currentFileName = $state('');
 
-	const uploadHandler: SubmitFunction = () => {
+	async function handleFilesSelected(e: Event) {
+		const target = e.currentTarget as HTMLInputElement;
+		const files = target.files;
+		if (!files || files.length === 0) return;
+
 		isUploading = true;
+		uploadTotal = files.length;
+		uploadCurrent = 0;
+		const errors: string[] = [];
 
-		return async ({ result, update }) => {
-			isUploading = false;
+		for (const file of Array.from(files)) {
+			uploadCurrent += 1;
+			currentFileName = file.name;
 
-			if (result.type === 'success') {
-				alert('Song uploaded successfully! It will play in the next rotation.');
-			} else if (result.type === 'failure') {
-				alert(`Upload failed: ${result.data?.message || 'Unknown error'}`);
+			const formData = new FormData();
+			formData.append('track', file);
+
+			try {
+				const res = await fetch('?/upload', {
+					method: 'POST',
+					body: formData
+				});
+				const result = deserialize(await res.text());
+
+				if (result.type === 'failure') {
+					errors.push(`${file.name}: ${result.data?.message ?? 'Unknown error'}`);
+				} else if (result.type === 'error') {
+					errors.push(`${file.name}: ${result.error?.message ?? 'Unknown error'}`);
+				}
+			} catch (err) {
+				console.error('Upload failed:', err);
+				errors.push(`${file.name}: Network error`);
 			}
+		}
 
-			update();
-		};
-	};
+		isUploading = false;
+		currentFileName = '';
+		target.value = ''; // reset so selecting the same file(s) again re-fires onchange
+
+		if (errors.length > 0) {
+			alert(`Some uploads failed:\n\n${errors.join('\n')}`);
+		} else {
+			alert(
+				`Successfully uploaded ${uploadTotal} song${uploadTotal > 1 ? 's' : ''}! ` +
+					`They'll play in the next rotation.`
+			);
+		}
+
+		await invalidateAll(); // refresh queue after uploads
+	}
 </script>
 
 <main class="container">
@@ -167,12 +219,12 @@
 				<input
 					type="range"
 					min={0}
-					max={0.1}
-					step={0.0005}
+					max={1}
+					step={0.01}
 					value={$settings.volume}
 					oninput={handleInput}
 					class="volume-slider"
-					style="--progress: {$settings.volume * 1000}%"
+					style="--progress: {$settings.volume * 100}%"
 				/>
 			</div>
 		{:else}
@@ -225,41 +277,71 @@
 	</div>
 
 	<div class="upload-section">
-		<form
-			method="POST"
-			action="?/upload"
-			enctype="multipart/form-data"
-			use:enhance={uploadHandler}
-			bind:this={formElement}
-		>
-			<input
-				type="file"
-				name="track"
-				accept="audio/*"
-				bind:this={fileInput}
-				onchange={() => formElement.requestSubmit()}
-				style="display: none;"
-			/>
+		<input
+			type="file"
+			name="track"
+			accept="audio/*"
+			multiple
+			bind:this={fileInput}
+			onchange={handleFilesSelected}
+			style="display: none;"
+		/>
 
-			<button
-				type="button"
-				class="upload-btn"
-				onclick={() => fileInput.click()}
-				disabled={isUploading}
-			>
-				{#if isUploading}
-					Uploading...
-				{:else}
-					Upload Song
-				{/if}
-			</button>
-		</form>
+		<button
+			type="button"
+			class="upload-btn"
+			onclick={() => fileInput.click()}
+			disabled={isUploading}
+		>
+			{#if isUploading}
+				<div>
+					<p>
+						Uploading {uploadCurrent}/{uploadTotal}
+					</p>
+					<p>
+						{currentFileName ? currentFileName : ''}
+					</p>
+				</div>
+			{:else}
+				Upload Songs
+			{/if}
+		</button>
 	</div>
 
 	<div class="queue-container">
+		<div class="search-container">
+			<div class="search-bar">
+				<Search size={18} />
+				<input
+					type="text"
+					placeholder="Search songs..."
+					bind:value={searchQuery}
+					class="search-input"
+				/>
+				{#if searchQuery}
+					<button
+						type="button"
+						class="search-clear"
+						onclick={() => (searchQuery = '')}
+						aria-label="Clear search"
+					>
+						<X size={16} />
+					</button>
+				{/if}
+			</div>
+		</div>
+
+		{#if searchQuery && filteredQueue.length === 0}
+			<p class="no-results">No songs match "{searchQuery}"</p>
+		{/if}
+
 		{#if player.queue}
-			{#each player.queue as song, i (i)}
-				<div class="queue-item-wrapper" use:scrollIntoViewIfCurrent={currentIndex === i}>
+			{#each filteredQueue as { song, i } (i)}
+				<div
+					title={songTitle(song)}
+					class="queue-item-wrapper"
+					use:scrollIntoViewIfCurrent={currentIndex === i}
+				>
 					<form method="POST" action="?/play" use:enhance class="play-form">
 						<input type="hidden" name="index" value={i} />
 
@@ -424,12 +506,70 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
+		/* max-width: 100%; */
+	}
+
+	.search-container {
+		z-index: 1;
+		position: sticky;
+		top: 0;
+		padding: 0.5rem 0;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		background-color: var(--background);
+		width: 100%;
+	}
+
+	.search-bar {
+		background-color: var(--secondary);
+		border-radius: 0.5rem;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		width: 100%;
+		padding: 0.5rem 0.75rem;
+	}
+
+	.search-input {
+		flex: 1;
+		background: none;
+		border: none;
+		outline: none;
+		color: var(--text);
+		font-size: 1rem;
+		min-width: 0;
+	}
+
+	.search-clear {
+		background: none;
+		padding: 0;
+		display: flex;
+		align-items: center;
+		opacity: 0.7;
+	}
+
+	.search-clear:hover {
+		opacity: 1;
+	}
+
+	.no-results {
+		text-align: center;
+		opacity: 0.6;
+		padding: 1rem 0;
+		width: 100%;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	/* Queue Item */
 	.queue-item-wrapper {
 		display: flex;
 		flex-direction: row;
+		align-items: stretch;
+		width: 100%;
+		max-width: 25rem;
+		min-width: 0;
 	}
 
 	.play-form {
@@ -439,23 +579,28 @@
 	.queue-item-trigger {
 		background: none;
 		padding: 0;
-		width: 100%;
+		flex: 1 1 auto;
+		min-width: 0;
 		text-align: left;
 	}
 
 	.queue-item {
 		display: flex;
 		flex-direction: row;
+		align-items: center;
 		background: var(--secondary);
 		padding: 1rem;
 		gap: 1rem;
 		width: 100%;
-		max-width: 20rem;
+		min-width: 0;
 		border-radius: 0.5rem 0 0 0.5rem;
 		transition: all 0.2s ease;
 	}
 
 	.queue-item p {
+		flex: 1 1 auto;
+		min-width: 0;
+		white-space: nowrap;
 		text-overflow: ellipsis;
 		overflow: hidden;
 	}
@@ -470,18 +615,21 @@
 	}
 
 	.queue-item-trigger:hover .queue-item {
-		filter: brightness(1.2);
+		background-color: var(--accent);
 	}
 
 	.delete-form {
 		display: flex;
+		flex-shrink: 0;
 	}
 
 	.delete-button {
+		flex-shrink: 0;
 		background: var(--secondary);
 		border-left: 1px solid var(--primary);
 		border-radius: 0 0.5rem 0.5rem 0;
 		padding: 0 0.75rem;
+		width: 3rem;
 		transition:
 			background-color 0.2s ease,
 			color 0.2s ease;
@@ -493,6 +641,10 @@
 	}
 
 	@media (max-width: 768px) {
+		.container {
+			padding-bottom: 0.25rem;
+		}
+
 		.controls {
 			gap: 0.2rem;
 		}
@@ -503,11 +655,22 @@
 			height: auto;
 			max-height: 60vh;
 			width: 100%;
-			max-width: 35rem;
 			margin-top: 2rem;
 		}
 
-		.queue-item {
+		.queue-item-wrapper {
+			max-width: none;
+		}
+
+		.search-bar {
+			max-width: 100%;
+		}
+
+		.no-results {
+			max-width: 100%;
+		}
+
+		.search-container {
 			max-width: 100%;
 		}
 	}

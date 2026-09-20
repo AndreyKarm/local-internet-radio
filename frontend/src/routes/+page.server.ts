@@ -22,20 +22,22 @@ export const load: PageServerLoad = async ({ fetch }) => {
 export const actions = {
 	upload: async ({ request, fetch }) => {
 		const data = await request.formData();
-		const file = data.get('track') as File | null;
+		const files = data.getAll('track') as File[];
 
-		if (!file || file.size === 0) {
+		if (files.length === 0) {
 			return fail(400, { message: 'No file selected' });
 		}
 
-		if (!file.type.startsWith('audio/')) {
-			return fail(400, { message: 'Must be an audio file' });
+		for (const file of files) {
+			if (!file.type.startsWith('audio/')) {
+				return fail(400, { message: `"${file.name}" is not an audio file` });
+			}
 		}
 
-		const formData = new FormData();
-		formData.append('track', file);
+		for (const file of files) {
+			const formData = new FormData();
+			formData.append('track', file);
 
-		try {
 			const res = await fetch(`${RADIO_URL}/upload`, {
 				method: 'POST',
 				body: formData
@@ -43,14 +45,13 @@ export const actions = {
 
 			if (!res.ok) {
 				const errorText = await res.text();
-				return fail(res.status, { message: `Backend error: ${errorText}` });
+				return fail(res.status, {
+					message: `Backend error uploading "${file.name}": ${errorText}`
+				});
 			}
-
-			return { success: true };
-		} catch (err) {
-			console.error('Upload failed:', err);
-			return fail(500, { message: 'Internal server error while uploading.' });
 		}
+
+		return { success: true };
 	},
 
 	shuffle: async ({ fetch }) => {
